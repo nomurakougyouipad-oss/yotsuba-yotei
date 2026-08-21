@@ -168,6 +168,24 @@ input{font-family:inherit}
 .sc{color:var(--shokucho);font-weight:900;margin-right:1px;font-size:.85em}
 .sep{color:#c2bcab;font-weight:400}
 .nodata{padding:40px 16px;text-align:center;color:var(--usu);font-size:15px;line-height:1.9}
+.nodata .showall{
+  display:block;margin:14px auto 0;min-height:48px;padding:0 20px;border-radius:24px;
+  border:1.5px dashed var(--midori);background:#fff;color:var(--midori);
+  font-size:15px;font-weight:700;
+}
+/* 使う工事だけ / すべて */
+.filterbar{display:flex;align-items:center;gap:10px;padding:0 12px 10px;flex-wrap:wrap}
+.filterbar .seg{display:flex;flex-shrink:0}
+.filterbar .seg button{
+  min-height:44px;padding:0 16px;border:1px solid var(--keisen);background:#fff;
+  font-size:15px;font-weight:700;color:var(--usu2);
+}
+.filterbar .seg button:first-child{border-radius:22px 0 0 22px}
+.filterbar .seg button:last-child{border-radius:0 22px 22px 0;border-left:0}
+.filterbar .seg button.on{background:var(--midori);color:#fff;border-color:var(--midori)}
+.filterbar .seg button.on + button{border-left-color:var(--midori)}
+.filterbar .fmsg{font-size:13px;color:var(--usu);line-height:1.5}
+.filterbar .fmsg b{color:var(--ki);font-weight:900}
 
 /* ---- 名前を選ぶ ---- */
 .pick{padding:16px 12px 24px}
@@ -245,6 +263,7 @@ input{font-family:inherit}
     pickQ: '',
     openMates: {},      // じぶん画面で「一緒に行く人」を開いている日
     cat: 'all',         // 予定表のカテゴリ
+    onlyUsed: true,     // その日に人が入っている工事だけ出すか
     pickDate: null,     // 予定表で見ている日
     online: true,
     unsubWeek: null
@@ -563,14 +582,42 @@ input{font-family:inherit}
     });
     b.appendChild(pills);
 
-    /* その日の工事。人がいない工事も、同じ形のカードで並べます。
-       並びは編集アプリの工事の順そのまま(人の有無で並べ替えません) */
-    var box = el('div', 'plan', '');
+    /* 「使う工事だけ / すべて」の切り替え。
+       工事が多いので、既定はその日に1人でも入っている工事だけです */
     var catList = (S.cat === 'all') ? YY.CATEGORIES.order : [S.cat];
+    var nUse = 0, nHide = 0;
+    catList.forEach(function (cat) {
+      YY.jobsByCat(cat, usedJobIds()).forEach(function (j) {
+        if (YY.cellCount(S.week, j.id, S.pickDate)) nUse++; else nHide++;
+      });
+    });
+
+    var bar = el('div', 'filterbar', '');
+    var seg = el('div', 'seg', '');
+    [{ k: true, l: '使う工事だけ' }, { k: false, l: 'すべて' }].forEach(function (it) {
+      var b2 = document.createElement('button');
+      b2.textContent = it.l;
+      if (S.onlyUsed === it.k) b2.className = 'on';
+      b2.addEventListener('click', function () { S.onlyUsed = it.k; render(); });
+      seg.appendChild(b2);
+    });
+    bar.appendChild(seg);
+    bar.appendChild(el('div', 'fmsg', S.onlyUsed
+      ? (nHide ? '<b>' + nHide + '件</b>を隠しています(この日は誰も入っていません)'
+        : 'この日に使う工事だけ出ています')
+      : '全' + (nUse + nHide) + '件を出しています(この日に人が入っているのは ' + nUse + '件)'));
+    b.appendChild(bar);
+
+    /* その日の工事。並びは編集アプリの工事の順そのままです */
+    var box = el('div', 'plan', '');
     var shown = 0;
 
     catList.forEach(function (cat) {
       var jobs = YY.jobsByCat(cat, usedJobIds());
+      // 「使う工事だけ」= その日に1人でも入っている工事だけ
+      if (S.onlyUsed) {
+        jobs = jobs.filter(function (j) { return YY.cellCount(S.week, j.id, S.pickDate); });
+      }
       if (!jobs.length) return;
       if (S.cat === 'all') box.appendChild(el('div', 'cathd2', esc(YY.CATEGORIES.labels[cat])));
 
@@ -606,10 +653,23 @@ input{font-family:inherit}
     }
 
     if (!shown) {
-      box.appendChild(el('div', 'nodata',
-        YY.master.jobs.length
-          ? 'このカテゴリに工事がありません'
-          : '工事がまだ登録されていません<br>事務所にお問い合わせください'));
+      if (!YY.master.jobs.length) {
+        box.appendChild(el('div', 'nodata',
+          '工事がまだ登録されていません<br>事務所にお問い合わせください'));
+      } else if (S.onlyUsed && nHide) {
+        // 工事はあるが、この日は誰も入っていないので隠れている状態
+        var nd = el('div', 'nodata',
+          'この日は、まだ誰も入っていません<br>' +
+          '<span style="font-size:14px">「すべて」に切り替えると工事を見られます</span>');
+        var sw = document.createElement('button');
+        sw.className = 'showall';
+        sw.textContent = 'すべての工事を出す';
+        sw.addEventListener('click', function () { S.onlyUsed = false; render(); });
+        nd.appendChild(sw);
+        box.appendChild(nd);
+      } else {
+        box.appendChild(el('div', 'nodata', 'このカテゴリに工事がありません'));
+      }
     }
 
     b.appendChild(box);
