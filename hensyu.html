@@ -1,0 +1,2642 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1c4b34">
+<title>よつば週間予定|予定を組む</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;600;700;900&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+
+<style>
+/* ============ 配色(日報アプリと共通トーン) ============ */
+:root{
+  --midori:#1c4b34;      /* 深緑 */
+  --kinari:#f5f1e8;      /* 生成り */
+  --ji:#e8e4d8;          /* 地色 */
+  --moji:#2b2a26;
+  --usu:#8a877c;
+  --usu2:#6b675c;
+  --keisen:#d9d3c4;
+  --keisen2:#e6e1d3;
+  --kyoryoku:#4a7c9b;    /* 協力会社の文字色 */
+  --shokucho:#3fae6a;    /* ◎ */
+  --aka:#b3402e;         /* 重複・警告 */
+  --ki:#b07d1e;          /* 余 */
+  --kiji:#fdf3dd;
+  --kiwaku:#ecd9ac;
+  --yasumi:#eceae2;
+  --kyo:#eef3ee;         /* きょうの列 */
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--ji);font-family:'Noto Sans JP',sans-serif;color:var(--moji);
+  font-size:16px;word-break:keep-all;-webkit-text-size-adjust:100%;
+}
+button{font-family:inherit;white-space:nowrap;cursor:pointer}
+input{font-family:inherit}
+
+/* ============ 全体の枠 ============ */
+#app{display:flex;flex-direction:column;min-height:100vh;background:var(--kinari)}
+.head{
+  background:var(--midori);color:#fff;padding:14px 16px 12px;
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+}
+.head .t{font-size:17px;font-weight:700}
+.head .s{font-size:12px;opacity:.75;margin-left:auto}
+/* PC版ツールバー */
+.head .shukei{
+  min-height:34px;padding:5px 12px;border-radius:8px;
+  border:1px solid rgba(255,255,255,.5);color:#fff;text-decoration:none;
+  font-size:13px;font-weight:700;margin-left:14px;
+}
+.head .tool{
+  min-height:34px;padding:0 12px;border-radius:8px;font-size:13px;font-weight:700;
+  border:1px solid rgba(255,255,255,.5);background:transparent;color:#fff;margin-left:8px;
+}
+.head .tool.xls{background:#fff;color:var(--midori);border:none;font-weight:900}
+.head .tool.line{background:#06c755;color:#fff;border:none;font-weight:900}
+/* 曜日を選ぶ小さなパネル */
+.daymask{position:fixed;inset:0;z-index:44;display:none;background:transparent}
+.daymask.on{display:block}
+.daypop{
+  position:fixed;z-index:45;display:none;background:#fff;width:max-content;
+  border:1px solid var(--keisen);border-radius:12px;
+  box-shadow:0 12px 32px rgba(43,42,38,.3);
+}
+.daypop.on{display:block}
+.daypop .arrow{
+  position:absolute;top:-7px;width:12px;height:12px;background:#fff;transform:rotate(45deg);
+  border-left:1px solid var(--keisen);border-top:1px solid var(--keisen);
+}
+.daypop .in{position:relative;padding:12px 14px}
+.daypop .ttl2{font-size:13px;font-weight:900;color:var(--midori);margin-bottom:8px}
+.daypop .row2{display:flex;gap:6px}
+.daypop .row2 button{
+  min-width:56px;min-height:52px;border-radius:8px;border:1px solid var(--keisen);
+  background:#fff;line-height:1.25;padding:4px 2px;
+}
+.daypop .row2 button .w{font-size:14px;font-weight:700;display:block}
+.daypop .row2 button .d{font-size:11px;color:var(--usu);display:block}
+.daypop .row2 button .n2{font-size:10px;color:var(--midori);font-weight:700;display:block}
+.daypop .row2 button.today{border-color:var(--midori);background:var(--kyo)}
+.daypop .row2 button:disabled{background:#f4f1e9;color:#b9b3a2;cursor:default}
+.daypop .row2 button:disabled .n2{color:#b9b3a2}
+.daypop .hint3{font-size:11px;color:var(--usu);margin-top:8px}
+
+/* 帯(オフライン・名簿エラー) */
+.obi{padding:8px 14px;font-size:14px;font-weight:700;text-align:center;display:none}
+.obi.on{display:block}
+.obi.offline{background:#4a4844;color:#fff}
+.obi.master{background:#fbe9e5;color:var(--aka);border-bottom:1px solid #e5b8ae}
+
+/* 週ナビ */
+.weeknav{
+  display:flex;align-items:center;gap:8px;padding:10px 12px;
+  background:#fff;border-bottom:1px solid var(--keisen);
+}
+.weeknav button{
+  min-width:48px;min-height:44px;border:1px solid var(--keisen);background:#fff;
+  border-radius:8px;font-size:18px;color:var(--midori);font-weight:700;flex-shrink:0;
+}
+.weeknav button.now{min-width:0;padding:0 12px;border-color:var(--midori);font-size:15px}
+.weeknav .lbl{flex:1;text-align:center;line-height:1.2}
+.weeknav .lbl b{font-size:17px;font-weight:900;display:block}
+.weeknav .lbl span{font-size:12px;color:var(--usu)}
+
+/* カテゴリタブ */
+.cats{display:flex;gap:8px;padding:12px 12px 10px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.cats::-webkit-scrollbar{display:none}
+.cats button{
+  min-height:44px;padding:0 14px;border-radius:22px;border:1px solid var(--keisen);
+  background:#fff;color:var(--moji);font-size:15px;font-weight:600;
+}
+.cats button.on{background:var(--midori);color:#fff;border-color:var(--midori);font-weight:700}
+
+/* ============ 使う工事だけ / すべて ============ */
+.filterbar{
+  display:flex;align-items:center;gap:10px;padding:0 12px 10px;flex-wrap:wrap;
+}
+.filterbar .seg{display:flex;flex-shrink:0}
+.filterbar .seg button{
+  min-height:40px;padding:0 14px;border:1px solid var(--keisen);background:#fff;
+  font-size:14px;font-weight:700;color:var(--usu2);
+}
+.filterbar .seg button:first-child{border-radius:20px 0 0 20px}
+.filterbar .seg button:last-child{border-radius:0 20px 20px 0;border-left:0}
+.filterbar .seg button.on{background:var(--midori);color:#fff;border-color:var(--midori)}
+.filterbar .seg button.on + button{border-left-color:var(--midori)}
+.filterbar .fmsg{font-size:12px;color:var(--usu);line-height:1.5}
+.filterbar .fmsg b{color:var(--ki);font-weight:900}
+
+@media (min-width:1024px){
+  .filterbar{padding:0 10px 6px;gap:8px}
+  .filterbar .seg button{min-height:28px;padding:0 12px;font-size:13px}
+  .filterbar .seg button:first-child{border-radius:14px 0 0 14px}
+  .filterbar .seg button:last-child{border-radius:0 14px 14px 0}
+  .filterbar .fmsg{font-size:11px}
+}
+
+/* ============ 予定グリッド ============ */
+.gridwrap{overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px}
+.grid{display:grid;grid-template-columns:112px repeat(7,86px);font-size:15px;min-width:min-content}
+.grid .hd{
+  padding:8px 4px;text-align:center;border-bottom:1px solid var(--keisen);
+  border-left:1px solid var(--keisen2);background:#fff;
+}
+.grid .hd b{font-weight:700}
+.grid .hd span{font-size:12px;color:var(--usu)}
+.grid .hd.today{border-bottom:2px solid var(--midori);background:var(--kyo)}
+.grid .hd.today b,.grid .hd.today span{color:var(--midori);font-weight:900}
+.grid .hd.sat b{color:var(--kyoryoku)}
+.grid .hd.sun b{color:var(--aka)}
+.grid .corner{
+  padding:8px 10px;background:var(--kinari);border-bottom:1px solid var(--keisen);
+  font-size:12px;color:var(--usu);
+}
+/* 工事名の列 */
+.grid .job{padding:10px;background:#fff;border-bottom:1px solid var(--keisen)}
+/* 長い名前でも日本語の途中で折り返せるようにします(body は keep-all のため) */
+.grid .job .n{font-weight:700;line-height:1.3;word-break:break-all;overflow-wrap:anywhere}
+.grid .job .no{font-size:11px;color:var(--usu)}
+/* セル */
+.grid .cell{
+  padding:8px 6px;background:#fff;border-bottom:1px solid var(--keisen);
+  border-left:1px solid var(--keisen2);line-height:1.55;font-weight:600;
+  min-height:44px;text-align:left;color:inherit;font-size:15px;width:100%;
+  border-top:0;border-right:0;
+}
+.grid .cell.today{background:#fdfcf8}
+.grid .cell .cnt{font-size:11px;color:var(--usu);font-weight:400}
+.grid .cell .more{
+  font-size:12px;color:var(--midori);font-weight:700;background:var(--kyo);
+  border-radius:8px;text-align:center;margin-top:3px;padding:2px 0;
+}
+.grid .cell.empty{text-align:center;color:#b9b3a2;font-size:22px}
+.nm{white-space:nowrap}
+.nm.coop{color:var(--kyoryoku)}
+.nm.dup{text-decoration:underline wavy var(--aka);text-underline-offset:3px;font-weight:700}
+/* しるし。記号でも打った文字でも、名前と別の色・少し小さめで出します */
+.sc{color:var(--shokucho);font-weight:900;margin-right:1px;font-size:.85em}
+/* 名前どうしの区切り(中点)。名前より薄くします */
+.sep{color:#c2bcab;font-weight:400}
+/* 休み行 */
+.grid .rest{background:var(--yasumi);border-bottom:1px solid var(--keisen);font-weight:700;color:var(--usu);padding:10px}
+.grid .cell.rest{background:var(--yasumi);border-left:1px solid #ddd8cb;color:var(--usu);text-align:center;font-weight:700}
+.grid .cell.rest.empty{color:#b9b3a2;font-size:15px}
+/* 余 行(PCのみ・読み取り専用) */
+.grid .yohd{background:var(--kiji);border-bottom:1px solid var(--kiwaku);font-weight:900;color:var(--ki);padding:10px 12px}
+.grid .yo{
+  padding:8px 6px;background:var(--kiji);border-bottom:1px solid var(--kiwaku);
+  border-left:1px solid #f0e3c2;line-height:1.6;font-weight:600;color:#8a6516;
+}
+.grid .yo .cnt{font-size:11px;color:var(--ki);font-weight:700}
+.grid .yo .none{text-align:center;color:#d8c391}
+.grid .yo .plus{border:none;background:#f3e2b6;color:#8a6516;border-radius:10px;padding:1px 8px;font-size:12px;font-weight:700}
+/* カテゴリ見出し(PCの「すべて」) */
+.grid .cathd{
+  grid-column:1/-1;padding:6px 12px;background:var(--kinari);
+  border-bottom:1px solid var(--keisen);font-size:12px;font-weight:900;color:var(--midori);
+}
+.guide{padding:8px 12px 0;font-size:12px;color:var(--usu);text-align:center}
+.legend{display:flex;justify-content:center;gap:14px;padding:6px 12px 10px;font-size:12px;font-weight:700}
+
+/* ============ 工事の追加・編集 ============ */
+.grid .job{cursor:pointer}
+/* カテゴリごとの一番下に置く「＋ 工事を追加」 */
+.addjob{background:var(--kinari);border-bottom:1px solid var(--keisen);padding:6px 10px}
+.addjob button{
+  min-height:44px;padding:0 16px;border-radius:10px;border:1.5px dashed var(--midori);
+  background:#fff;color:var(--midori);font-size:15px;font-weight:700;
+}
+.addjob button span{font-size:12px;font-weight:600;color:var(--usu)}
+/* 「隠す」にしたのに、予定があるので表に残っている工事 */
+.grid .job .kept{
+  margin-top:4px;background:var(--yasumi);border:1px solid var(--keisen);
+  border-radius:6px;padding:3px 6px;
+}
+.grid .job .kept .badge{font-size:11px;font-weight:700;color:var(--usu2);line-height:1.3}
+.grid .job .kept .why{font-size:10px;color:var(--usu);line-height:1.3;margin-top:1px}
+.popmask{position:fixed;inset:0;z-index:39;display:none;background:transparent}
+.popmask.on{display:block}
+.jobpop{
+  position:fixed;z-index:40;width:420px;max-width:calc(100vw - 24px);
+  background:#fff;border:1px solid var(--keisen);border-radius:12px;
+  box-shadow:0 12px 32px rgba(43,42,38,.28);display:none;
+}
+.jobpop.on{display:block}
+.jobpop .arrow{
+  position:absolute;width:14px;height:14px;background:#fff;transform:rotate(45deg);
+}
+.jobpop.below .arrow{top:-8px;border-left:1px solid var(--keisen);border-top:1px solid var(--keisen)}
+.jobpop.above .arrow{bottom:-8px;border-right:1px solid var(--keisen);border-bottom:1px solid var(--keisen)}
+.jobpop .in{position:relative;padding:14px 16px 16px;display:flex;flex-direction:column;gap:10px}
+.jobpop .ttl{font-size:15px;font-weight:900;color:var(--midori)}
+.jobpop hr{border:0;border-top:1px solid var(--keisen);margin:2px 0}
+/* ラベルは左、入力は右 */
+.jobpop .fld{display:grid;grid-template-columns:88px 1fr;gap:10px;align-items:center}
+.jobpop .fld .lb{font-size:14px;font-weight:700;color:var(--usu2);line-height:1.3}
+.jobpop .fld .lb small{display:block;font-size:11px;font-weight:600;color:var(--usu)}
+.jobpop input{
+  width:100%;min-height:48px;border:1.5px solid var(--midori);border-radius:8px;
+  padding:0 12px;font-size:16px;background:#fff;font-family:inherit;
+}
+.jobpop input.sub{border-color:var(--keisen)}
+.jobpop .cats2{display:flex;gap:6px;flex-wrap:wrap}
+.jobpop .cats2 button{
+  min-height:44px;padding:0 12px;border-radius:22px;border:1px solid var(--keisen);
+  background:#fff;font-size:14px;font-weight:600;color:var(--moji);
+}
+.jobpop .cats2 button.on{background:var(--midori);color:#fff;border-color:var(--midori);font-weight:700}
+.jobpop .tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.jobpop .tools button{
+  min-height:40px;padding:0 12px;border-radius:8px;border:1px solid var(--keisen);
+  background:#fff;font-size:14px;font-weight:700;color:var(--usu2);
+}
+.jobpop .tools button:disabled{color:#cfc9ba;cursor:default}
+.jobpop .tools .hide.on{border-color:var(--ki);color:var(--ki);background:var(--kiji)}
+.jobpop .copyw{
+  width:100%;min-height:44px;border-radius:8px;border:1.5px solid var(--midori);
+  background:var(--kyo);color:var(--midori);font-size:15px;font-weight:700;
+}
+.jobpop .copyw:disabled{border-color:var(--keisen);background:#f4f1e9;color:#b9b3a2;cursor:default}
+.jobpop .copyw span{font-size:12px;font-weight:600;color:var(--usu2)}
+.jobpop .copyw:disabled span{color:#b9b3a2}
+.jobpop .err{font-size:13px;font-weight:700;color:var(--aka)}
+.jobpop .btns{display:flex;gap:10px;justify-content:flex-end;margin-top:4px}
+.jobpop .btns button{
+  min-height:44px;padding:0 20px;border-radius:8px;font-size:15px;font-weight:700;
+  border:1px solid var(--keisen);background:#fff;color:var(--usu2);
+}
+.jobpop .btns .ok{background:var(--midori);color:#fff;border-color:var(--midori);font-weight:900}
+
+/* ============ 下タブ ============ */
+.tabs{
+  margin-top:auto;display:grid;grid-template-columns:repeat(3,1fr);
+  background:#fff;border-top:1px solid var(--keisen);
+  padding:6px 4px calc(10px + env(safe-area-inset-bottom));position:sticky;bottom:0;z-index:20;
+}
+.tabs button{border:none;background:none;text-align:center;padding:6px 0;color:var(--usu);min-height:44px}
+.tabs button .i{font-size:20px}
+.tabs button .l{font-size:12px;font-weight:600}
+.tabs button.on{color:var(--midori)}
+.tabs button.on .l{font-weight:900}
+
+/* ============ 選択シート ============ */
+.mask{position:fixed;inset:0;background:rgba(43,42,38,.38);z-index:30;display:none}
+.mask.on{display:block}
+.sheet{
+  position:fixed;left:0;right:0;bottom:0;background:#fff;border-radius:18px 18px 0 0;
+  z-index:31;display:none;flex-direction:column;max-height:92vh;
+  box-shadow:0 -8px 30px rgba(0,0,0,.25);
+}
+.sheet.on{display:flex}
+.sheet .sh{background:var(--midori);color:#fff;padding:14px 16px;border-radius:18px 18px 0 0}
+.sheet .sh .j{font-size:18px;font-weight:900}
+.sheet .sh .d{font-size:15px;opacity:.9;margin-top:2px}
+.sheet .sb{padding:14px 14px 8px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;flex:1}
+.sheet .sf{
+  display:flex;gap:10px;padding:12px 14px calc(18px + env(safe-area-inset-bottom));
+  border-top:1px solid var(--keisen);
+}
+.sheet .sf button{min-height:50px;border-radius:10px;font-size:15px;font-weight:700;flex-shrink:0;padding:0 14px}
+.btn-clear{border:1px solid var(--aka);background:#fff;color:var(--aka)}
+.btn-cancel{border:1px solid var(--keisen);background:#fff;color:var(--usu2)}
+.btn-ok{flex:1;border:none;background:var(--midori);color:#fff;font-size:18px;font-weight:900}
+.copyprev{
+  min-height:48px;border-radius:10px;border:1.5px solid var(--midori);background:var(--kyo);
+  color:var(--midori);font-size:15px;font-weight:700;text-align:left;padding:0 14px;
+}
+.copyprev:disabled{border-color:var(--keisen);background:#f4f1e9;color:#b9b3a2;cursor:default}
+.copyprev span{font-size:13px;font-weight:600;color:var(--usu2)}
+.grp{}
+.grp.yo{background:var(--kiji);border:1px solid var(--kiwaku);border-radius:12px;padding:12px}
+.grp .gt{font-size:15px;font-weight:900;color:var(--ki);margin-bottom:10px}
+.grp .gt.sub{font-size:14px;font-weight:700;color:var(--usu);margin-bottom:8px}
+.grp .gt .sum{margin-left:8px;font-size:13px;font-weight:700;color:#8a6516}
+.grp .ghint{margin-top:10px;font-size:12px;color:#8a6516;line-height:1.5}
+.chips{display:flex;flex-wrap:wrap;gap:10px}
+.chip{
+  min-height:44px;padding:0 18px;border-radius:22px;border:1px solid var(--keisen);
+  background:#fff;font-size:16px;font-weight:700;
+}
+.chip.on{background:var(--midori);color:#fff;border-color:var(--midori)}
+.chip.coop{color:var(--kyoryoku)}
+.chip.on.coop{color:#fff}
+/* 配置ずみ・休みは「名前だけ + 色」で見分けます(行き先は出しません) */
+.chip.placed{border:1.5px dashed #b9b3a2;background:#f4f1e9;color:var(--usu2)}
+.chip.rest{background:var(--yasumi);color:var(--usu)}
+.extra-row{display:flex;gap:8px}
+.extra-row input{
+  flex:1;min-height:44px;border:1px solid var(--keisen);border-radius:10px;
+  padding:0 12px;font-size:16px;background:#fff;
+}
+.extra-row button{min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--midori);background:#fff;color:var(--midori);font-size:15px;font-weight:700}
+/* しるし選択の吹き出し(押したチップのすぐ横に出ます) */
+.markmask{position:fixed;inset:0;z-index:44;display:none;background:transparent}
+.markmask.on{display:block}
+.markpop{
+  position:fixed;z-index:45;display:none;background:#fff;
+  border:1px solid var(--keisen);border-radius:12px;
+  box-shadow:0 12px 32px rgba(43,42,38,.3);width:max-content;max-width:calc(100vw - 24px);
+}
+.markpop.on{display:block}
+.markpop .arrow{position:absolute;width:12px;height:12px;background:#fff;transform:rotate(45deg)}
+.markpop.below .arrow{top:-7px;border-left:1px solid var(--keisen);border-top:1px solid var(--keisen)}
+.markpop.above .arrow{bottom:-7px;border-right:1px solid var(--keisen);border-bottom:1px solid var(--keisen)}
+.markpop .in{position:relative;padding:10px 12px}
+.markpop .who{font-size:13px;font-weight:700;color:var(--usu);margin-bottom:8px}
+.markpop .row{display:flex;gap:6px}
+.markpop .row button{
+  min-height:48px;min-width:56px;border-radius:10px;border:1px solid var(--keisen);
+  background:#fff;font-size:18px;font-weight:700;
+}
+.markpop .row button.on{background:var(--midori);color:#fff;border-color:var(--midori);font-weight:900}
+.markpop .row button.none{font-size:14px}
+.markpop .hint2{font-size:11px;color:var(--usu);margin-top:6px;line-height:1.6}
+/* その他:自由に打てるしるし */
+.markpop .freemark{display:flex;align-items:center;gap:6px;margin-top:8px}
+.markpop .freemark .lb3{font-size:12px;font-weight:700;color:var(--usu2);flex-shrink:0}
+.markpop .freemark input{
+  flex:1;min-width:90px;min-height:44px;border:1px solid var(--keisen);border-radius:8px;
+  padding:0 10px;font-size:16px;background:#fff;
+}
+.markpop .freemark .ok3{
+  min-height:44px;padding:0 12px;border-radius:8px;border:1px solid var(--midori);
+  background:#fff;color:var(--midori);font-size:14px;font-weight:700;flex-shrink:0;
+}
+.markpop .off{
+  display:block;width:100%;margin-top:8px;min-height:44px;border-radius:10px;
+  border:1px solid var(--aka);background:#fff;color:var(--aka);font-size:14px;font-weight:700;
+}
+.nowsel{font-size:15px;font-weight:700;color:var(--midori);text-align:center;background:var(--kyo);border-radius:8px;padding:8px}
+.nowsel b{font-size:18px;font-weight:900}
+
+/* ============ 設定(職長) ============ */
+/* ============ メンバー(名簿)============ */
+.setbar{padding:12px;background:#fff;border-bottom:1px solid var(--keisen);display:flex;flex-direction:column;gap:10px}
+.setbar input{width:100%;min-height:44px;border:1px solid var(--keisen);border-radius:10px;padding:0 12px;font-size:16px}
+.setbar .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.setbar .cnt{font-size:15px;font-weight:700;color:var(--midori);margin-left:auto}
+.toggle{min-height:44px;padding:0 14px;border-radius:22px;border:1px solid var(--keisen);background:#fff;font-size:14px;font-weight:700}
+.toggle.on{background:var(--midori);color:#fff;border-color:var(--midori)}
+.toggle.add{border-color:var(--midori);color:var(--midori);border-style:dashed;border-width:1.5px}
+.wlist{display:flex;flex-direction:column;gap:8px;padding:12px}
+.wrow{
+  display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  background:#fff;border:1px solid var(--keisen);border-radius:12px;padding:10px 12px;min-height:60px;
+}
+.wrow.off{background:var(--yasumi);border-style:dashed}
+.wrow .nm2{font-size:18px;font-weight:700}
+.wrow .nm2.coop{color:var(--kyoryoku)}
+.wrow .sub{font-size:12px;color:var(--usu);margin-top:2px}
+.wrow .ord{
+  font-size:11px;color:#c2bcab;font-weight:700;width:26px;flex-shrink:0;text-align:right;
+}
+.wrow .tag{
+  margin-left:auto;flex-shrink:0;font-size:11px;font-weight:700;color:var(--usu);
+  background:var(--yasumi);border:1px solid var(--keisen);border-radius:10px;padding:2px 8px;
+}
+/* まとめて追加 */
+.bulk{padding:12px;display:flex;flex-direction:column;gap:10px}
+.bulk textarea{
+  width:100%;min-height:200px;border:1.5px solid var(--midori);border-radius:10px;
+  padding:10px 12px;font-size:16px;font-family:inherit;line-height:1.7;background:#fff;
+}
+.bulk .ex{
+  font-size:12px;color:var(--usu);line-height:1.7;background:#fff;
+  border:1px solid var(--keisen);border-radius:10px;padding:10px 12px;
+}
+.bulk .ex b{color:var(--moji)}
+.bulk .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.bulk .row .lb{font-size:14px;font-weight:700;color:var(--usu2)}
+.bulk .btns{display:flex;gap:10px;justify-content:flex-end}
+.bulk .btns button{min-height:48px;padding:0 20px;border-radius:10px;border:1px solid var(--keisen);background:#fff;font-size:15px;font-weight:700;color:var(--usu2)}
+.bulk .btns .ok{background:var(--midori);color:#fff;border-color:var(--midori);font-weight:900}
+/* 選択シートの「名簿を直す」 */
+.fixlink{
+  margin-top:10px;font-size:13px;color:var(--midori);font-weight:700;
+  background:none;border:none;text-decoration:underline;padding:6px 0;min-height:36px;
+}
+.chip.unknown{border:1.5px dashed var(--ki);background:#fffaf0;color:#8a6516}
+.chip.unknown.on{background:var(--midori);color:#fff;border-style:solid;border-color:var(--midori)}
+
+/* ============ 配信 ============ */
+.wknav2{
+  padding:10px 12px;background:#fff;border-bottom:1px solid var(--keisen);
+  text-align:center;font-weight:900;font-size:17px;
+}
+.wknav2 span{font-size:12px;color:var(--usu);font-weight:400}
+.daypills{display:flex;gap:6px;padding:12px 10px}
+.daypills button{
+  flex:1;min-height:52px;border-radius:10px;border:1px solid var(--keisen);
+  background:#fff;line-height:1.2;position:relative;padding:0;
+}
+.daypills button .w{font-size:14px;font-weight:700}
+.daypills button .d{font-size:11px;color:var(--usu)}
+.daypills button.sat .w{color:var(--kyoryoku)}
+.daypills button.sun .w{color:var(--aka)}
+.daypills button.on{background:var(--midori);border-color:var(--midori)}
+.daypills button.on .w{color:#fff;font-weight:900}
+.daypills button.on .d{color:#fff;opacity:.85}
+.daypills button.on.sat .w,.daypills button.on.sun .w{color:#fff}
+.daypills button .dot{
+  position:absolute;top:5px;right:6px;width:9px;height:9px;border-radius:50%;
+  background:#e5604a;border:1.5px solid #fff;
+}
+/* ============ チェック ============ */
+.checks{display:flex;flex-direction:column;gap:12px;padding:2px 12px 14px}
+.card{border-radius:12px;padding:14px}
+.card .ct{display:flex;align-items:center;gap:8px}
+.card .ct .t{font-size:16px;font-weight:900}
+.card .ct .n{
+  margin-left:auto;color:#fff;border-radius:14px;padding:3px 12px;
+  font-size:14px;font-weight:900;white-space:nowrap;
+}
+.card.dup{background:#fbe9e5;border:1px solid #e5b8ae}
+.card.dup .ct .t{color:var(--aka)}
+.card.dup .ct .n{background:var(--aka)}
+.card.yo2{background:var(--kiji);border:1px solid var(--kiwaku)}
+.card.yo2 .ct .t{color:var(--ki)}
+.card.yo2 .ct .n{background:var(--ki)}
+.card.rest2{background:var(--yasumi);border:1px solid var(--keisen)}
+.card.rest2 .ct .t{color:var(--usu)}
+.card.rest2 .ct .n{background:var(--usu)}
+.card .body2{margin-top:10px;display:flex;flex-wrap:wrap;gap:8px}
+.card .msg{font-size:14px;color:var(--usu);margin-top:6px}
+.card.dup .msg{color:var(--aka)}
+.card.yo2 .msg{color:#8a6516}
+/* 重複した人 */
+.dupitem{
+  display:inline-flex;flex-direction:column;background:#fff;border:1px solid #e5b8ae;
+  border-radius:12px;padding:8px 16px;text-align:left;
+}
+.dupitem .nm3{font-size:17px;font-weight:700;white-space:nowrap}
+.dupitem .nm3 .wv{text-decoration:underline wavy var(--aka);text-underline-offset:3px}
+.dupitem .to{font-size:12px;color:var(--aka);font-weight:600;margin-top:2px}
+/* 余・休みの名前 */
+.pill2{
+  background:#fff;border:1px solid var(--kiwaku);border-radius:20px;
+  padding:8px 16px;font-size:16px;font-weight:700;
+}
+.pill2.coop{color:var(--kyoryoku)}
+.card.rest2 .pill2{border-color:var(--keisen);color:var(--usu2)}
+.sumcard{
+  background:#fff;border:1px solid var(--keisen);border-radius:12px;padding:12px;
+  text-align:center;font-size:16px;font-weight:700;
+}
+.sumcard b{color:var(--midori);font-size:20px;font-weight:900}
+.sumcard .sub2{font-size:12px;color:var(--usu);font-weight:400;margin-top:4px}
+
+.linebox{
+  margin:2px 12px 0;background:#fff;border:1px solid var(--keisen);border-radius:12px;
+  padding:16px;font-size:16px;line-height:1.9;white-space:pre-wrap;word-break:break-all;
+}
+.linebox .head{font-weight:900}
+.linebox .job{font-weight:700;margin-top:6px}
+.linebox .job:first-of-type{margin-top:0}
+.linebox .foot{color:var(--usu2)}
+.copywrap{padding:14px 12px 8px}
+.copybtn{
+  width:100%;min-height:56px;border-radius:12px;border:none;
+  background:#06c755;color:#fff;font-size:18px;font-weight:900;
+}
+.copyfall{margin:0 12px 12px}
+.copyfall textarea{
+  width:100%;min-height:160px;border:1px solid var(--keisen);border-radius:10px;
+  padding:10px;font-size:15px;font-family:inherit;line-height:1.8;background:#fff;
+}
+.copyfall .t{font-size:13px;color:var(--aka);font-weight:700;margin-bottom:6px}
+
+@media (min-width:1024px){
+  .wknav2{padding:5px 12px;font-size:15px}
+  .daypills{padding:6px 10px;gap:6px}
+  .daypills button{min-height:44px}
+  .checks{max-width:760px;margin:0 auto;padding:6px 12px 14px}
+  .card{padding:12px}
+  .card .ct .t{font-size:15px}
+  .pill2{padding:6px 14px;font-size:15px}
+  .linebox{font-size:15px;line-height:1.8;padding:14px;max-width:640px;margin:2px auto 0}
+  .copywrap{max-width:640px;margin:0 auto}
+  .copyfall{max-width:640px;margin:0 auto 12px}
+}
+
+/* ============ これから作る画面 ============ */
+.soon{padding:60px 24px;text-align:center;color:var(--usu);line-height:1.9}
+.soon .e{font-size:40px}
+
+/* ============ トースト ============ */
+.toast{
+  position:fixed;left:50%;bottom:96px;transform:translateX(-50%);
+  background:#2b2a26;color:#fff;border-radius:16px;padding:10px 18px;
+  font-size:14px;font-weight:700;z-index:50;display:none;max-width:90vw;text-align:center;
+}
+.toast.on{display:block}
+
+/* =====================================================================
+   PC(1024px以上)= 一覧性優先。画面いっぱい・行を詰める
+   ※ スマホ(1023px以下)は上の指定のまま。大きさは変えていません
+   ===================================================================== */
+@media (min-width:1024px){
+  body{background:var(--kinari)}
+  /* 最大幅・外枠・影をやめて画面いっぱいに */
+  #app{max-width:none;margin:0;border:0;border-radius:0;box-shadow:none;min-height:100vh}
+
+  /* --- 上まわりを薄く(だいたい半分の高さ) --- */
+  .head{padding:3px 12px}
+  .head .t{font-size:14px;font-weight:900}
+  .head .s{font-size:11px}
+  .obi{padding:4px 12px;font-size:12px}
+
+  .weeknav{padding:3px 10px;gap:6px}
+  .weeknav button{min-width:32px;min-height:26px;font-size:13px;border-radius:6px}
+  .weeknav button.now{padding:0 10px;font-size:13px}
+  .weeknav .lbl{line-height:1.1}
+  .weeknav .lbl b{font-size:15px}
+  .weeknav .lbl span{font-size:11px}
+
+  .cats{padding:4px 10px;gap:6px;overflow:visible}
+  .cats button{min-height:26px;padding:0 12px;font-size:13px;border-radius:13px}
+
+  /* --- 表 --- */
+  .gridwrap{overflow-x:visible}
+  /* 平日1に対して 土日0.7。工事名の列は読める幅を確保します */
+  .grid{
+    grid-template-columns:240px repeat(5,minmax(0,1fr)) repeat(2,minmax(0,.7fr));
+    font-size:13px;min-width:0;
+  }
+  .grid .corner{padding:4px 8px;font-size:11px}
+  .grid .hd{padding:4px 3px}
+  .grid .hd span{font-size:11px}
+
+  /* 工事名。3行まで折り返し、入らないものだけ … 。縦は中央ぞろえ */
+  .grid .job{padding:4px 10px;display:flex;flex-direction:column;justify-content:center}
+  /* 3行まで折り返し、それでも入らないときだけ … で省略(全文はマウスオーバー) */
+  .grid .job .n{
+    font-size:14px;line-height:1.28;font-weight:700;
+    display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
+    overflow:hidden;text-overflow:ellipsis;
+    word-break:break-all;overflow-wrap:anywhere;
+  }
+  .grid .job .no{font-size:10px;line-height:1.2}
+
+  /* セルは行の高さを下げる */
+  .grid .cell{padding:4px 5px;line-height:1.38;font-size:13px;min-height:0}
+  .grid .cell .cnt{font-size:10px;line-height:1.2}
+  .grid .cell.empty{font-size:15px;padding:2px}
+  .grid .cell .more{font-size:11px;padding:0;margin-top:1px}
+  .grid .rest{padding:4px 8px;font-size:13px}
+  .grid .cell.rest{padding:4px 5px}
+  .grid .cathd{padding:3px 8px;font-size:11px}
+
+  /* --- 🟡余 行:たたんだ状態を既定に。ふつうの行と同じ高さ --- */
+  .grid .yohd{
+    padding:4px 6px 4px 4px;font-size:13px;
+    display:flex;align-items:center;gap:6px;
+  }
+  .grid .yohd .tg{
+    order:-1;flex-shrink:0;                 /* 左端に小さく */
+    min-height:20px;padding:0 6px;border-radius:10px;
+    border:1px solid var(--kiwaku);background:#fff;color:var(--ki);
+    font-size:11px;font-weight:700;line-height:18px;
+  }
+  .grid .yo{padding:4px 5px;line-height:1.38}
+  .grid .yo .cnt{font-size:10px}
+  /* たたんでいるとき = 人数だけ大きく1行 */
+  .grid .yo.closed{text-align:center;padding:4px 5px}
+  .grid .yo.closed .big{font-size:15px;font-weight:900;color:var(--ki);line-height:1.3}
+  .grid .yo.closed .none{font-size:13px;line-height:1.3}
+
+  .guide{display:none}
+  .legend{padding:4px 12px 6px;font-size:11px;gap:12px}
+
+  /* --- 下タブも薄く --- */
+  .tabs{grid-template-columns:repeat(4,1fr);padding:1px 4px 3px}
+  .tabs button{min-height:30px;padding:1px 0}
+  .tabs button .i{font-size:13px;line-height:1.15}
+  .tabs button .l{font-size:10px}
+
+  /* --- 選択シートは中央のモーダル(大きさは触りません) --- */
+  .sheet{
+    left:50%;top:50%;right:auto;bottom:auto;transform:translate(-50%,-50%);
+    width:520px;max-height:86vh;border-radius:14px;
+  }
+  .sheet .sh{border-radius:14px 14px 0 0}
+  .sheet .sf{padding:12px 14px 16px}
+
+  .wlist{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+}
+@media (max-width:1023px){
+  .pconly{display:none !important}
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div class="head">
+    <div class="t" id="headTitle">📅 予定を組む</div>
+    <a class="shukei pconly" href="shukei.html">📊 集計</a>
+    <button class="tool xls pconly" id="btnXls">📥 Excel書き出し</button>
+    <button class="tool line pconly" id="btnLine">💬 LINE用にコピー</button>
+    <div class="s">よつば建設工業</div>
+  </div>
+
+  <div class="obi offline" id="obiOffline">電波が届いていません。編集はできません</div>
+  <div class="obi master" id="obiMembers">
+    メンバーが登録されていません。下の「👥 メンバー」から登録してください
+  </div>
+
+  <div id="body"></div>
+
+  <div class="tabs">
+    <button data-tab="plan" class="on"><div class="i">📅</div><div class="l">予定を組む</div></button>
+    <button data-tab="check"><div class="i">🔍</div><div class="l">チェック</div></button>
+    <button data-tab="line" class="pconly"><div class="i">💬</div><div class="l">配信</div></button>
+    <button data-tab="members"><div class="i">👥</div><div class="l">メンバー</div></button>
+  </div>
+</div>
+
+<div class="mask" id="mask"></div>
+<div class="sheet" id="sheet"></div>
+<div class="popmask" id="popmask"></div>
+<div class="jobpop" id="jobpop"></div>
+<div class="markmask" id="markmask"></div>
+<div class="markpop" id="markpop"></div>
+<div class="daymask" id="daymask"></div>
+<div class="daypop" id="daypop"></div>
+<div class="toast" id="toast"></div>
+
+<script src="common.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* =================================================================
+     状態
+     ================================================================= */
+  var S = {
+    tab: 'plan',
+    monday: YY.thisMonday(),
+    cat: 1,              // 1 / 2 / 3 / 'all'(PCのみ)
+    week: { assign: {} },
+    online: true,
+    yoOpen: false,       // PCの「余」行をひらいているか
+    unsubWeek: null,
+    prevMonday: null,    // 先週の月曜(コピー元)
+    prevWeek: null,      // 先週のデータ。読めるまでは null
+    sheet: null,         // 選択シートの作業中の中身
+    pickDate: null,      // チェック・配信で選んでいる日(共通)
+    onlyUsed: true,      // 予定を組む:その週に人が入っている工事だけ出すか
+    markChip: null,      // しるしの吹き出しを出しているチップ
+    editJob: null,       // 吹き出しで開いている工事id('__new__' なら新規)
+    editCat: 1,          // その吹き出しで選んでいるカテゴリ
+    editNewCat: null     // 新規追加のとき、どのカテゴリの「＋」から開いたか
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var isPC = function () { return window.matchMedia('(min-width:1024px)').matches; };
+  var esc = function (s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+    });
+  };
+
+  function toast(msg) {
+    var t = $('toast'); t.textContent = msg; t.classList.add('on');
+    clearTimeout(toast._t); toast._t = setTimeout(function () { t.classList.remove('on'); }, 2200);
+  }
+
+  /* =================================================================
+     起動
+     ================================================================= */
+  function boot() {
+    // PWA(manifest と ホーム画面アイコン)
+    var icon = YY.iconDataUri(180);
+    var link = document.createElement('link');
+    link.rel = 'apple-touch-icon'; link.href = icon;
+    document.head.appendChild(link);
+    var fav = document.createElement('link');
+    fav.rel = 'icon'; fav.href = YY.iconDataUri(64);
+    document.head.appendChild(fav);
+    var mf = {
+      name: 'よつば週間予定(編集)', short_name: 'よつば予定',
+      display: 'standalone', background_color: '#f5f1e8', theme_color: '#1c4b34',
+      icons: [{ src: icon, sizes: '180x180', type: 'image/svg+xml' }]
+    };
+    var ml = document.createElement('link');
+    ml.rel = 'manifest';
+    ml.href = URL.createObjectURL(new Blob([JSON.stringify(mf)], { type: 'application/json' }));
+    document.head.appendChild(ml);
+
+    YY.init();
+
+    // 接続の見張り
+    YY.onConnection(function (on) {
+      S.online = on;
+      $('obiOffline').classList.toggle('on', !on);
+    });
+
+    // 工事とメンバー(追加・編集が全端末にその場で反映されます)
+    YY.subscribeJobs(function () { render(); });
+    YY.subscribeMembers(function () { render(); });
+
+    watchWeek();
+
+    // 下タブ
+    Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function (b) {
+      b.addEventListener('click', function () {
+        S.tab = b.getAttribute('data-tab');
+        Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function (x) {
+          x.classList.toggle('on', x === b);
+        });
+        closeSheet();
+        render();
+      });
+    });
+
+    $('mask').addEventListener('click', closeSheet);
+
+    // PC版ツールバー
+    $('btnXls').addEventListener('click', exportExcel);
+    $('btnLine').addEventListener('click', function (e) {
+      e.stopPropagation();
+      openDayPop($('btnLine'));
+    });
+
+    // 吹き出し:外側をクリック / Esc で閉じます(保存しません)
+    $('popmask').addEventListener('click', closeJobPop);
+    $('markmask').addEventListener('click', closeMarkPop);
+    $('daymask').addEventListener('click', closeDayPop);
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      if (S.markChip) closeMarkPop();
+      else if (S.editJob) closeJobPop();
+      else closeDayPop();
+    });
+    // 画面が動いても、指している相手を追いかけます
+    window.addEventListener('scroll', function () {
+      positionJobPop();
+      positionMarkPop();
+    }, true);
+
+    // スマホ⇔PCの切り替わりで組み直します
+    window.addEventListener('resize', function () { render(); positionJobPop(); });
+    var mq = window.matchMedia('(min-width:1024px)');
+    if (mq.addEventListener) mq.addEventListener('change', function () { render(); });
+    else if (mq.addListener) mq.addListener(function () { render(); });
+
+    render();
+  }
+
+  /** 表示中の週を購読しなおします。あわせて先週ぶんも読みます(コピー元) */
+  function watchWeek() {
+    if (S.unsubWeek) S.unsubWeek();
+    S.unsubWeek = YY.subscribeWeek(S.monday, function (w) {
+      S.week = w;
+      render();
+      if (S.sheet) refreshSheet();   // シートを開いたまま他の人が編集したとき
+    });
+
+    // 先週は「コピー元」としてだけ使うので、1回読むだけにします
+    var pm = YY.addWeeks(S.monday, -1);
+    S.prevMonday = pm;
+    S.prevWeek = null;
+    YY.loadWeek(pm).then(function (w) {
+      if (S.prevMonday !== pm) return;    // 読んでいる間に週が動いたら捨てます
+      S.prevWeek = w;
+      render();
+      if (S.sheet) refreshSheet();
+    });
+  }
+
+  function goWeek(n) {
+    S.monday = (n === 0) ? YY.thisMonday() : YY.addWeeks(S.monday, n);
+    closeSheet();
+    watchWeek();
+    render();
+  }
+
+  /* =================================================================
+     画面の描き分け
+     ================================================================= */
+  function render() {
+    // 配信タブはPCだけです。スマホ幅になったら予定表へ戻します
+    if (!isPC() && S.tab === 'line') S.tab = 'plan';
+    Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function (x) {
+      x.classList.toggle('on', x.getAttribute('data-tab') === S.tab);
+    });
+
+    var head = {
+      plan: '📅 予定を組む', check: '🔍 チェック',
+      line: '💬 配信', members: '👥 メンバー'
+    };
+    $('headTitle').textContent = head[S.tab] || '';
+
+    // メンバーが1人もいなければ、その旨を出します
+    $('obiMembers').classList.toggle('on',
+      YY.master.membersLoaded && !YY.master.workers.length && S.tab !== 'members');
+
+    var b = $('body');
+    b.innerHTML = '';
+    if (S.tab === 'check') renderCheck(b);
+    else if (S.tab === 'line') renderLine(b);
+    else if (S.tab === 'members') renderMembers(b);
+    else renderPlan(b);
+
+    // 工事やメンバーの吹き出しを開いている最中に描き直しが入ったら、位置を合わせ直します
+    if (S.editJob) {
+      if (S.tab === 'plan' || S.editJob === '__member__') positionJobPop();
+      else closeJobPop();
+    }
+  }
+
+  /* =================================================================
+     画面1「予定を組む」
+     ================================================================= */
+  function renderPlan(b) {
+    b.appendChild(weekNav());
+    b.appendChild(catTabs());
+    b.appendChild(filterBar());
+
+    var days = YY.weekDates(S.monday);
+    var st = {};    // 日付 → 状態(余/重複/休み)
+    days.forEach(function (d) { st[d] = YY.computeDay(S.week, d); });
+
+    var wrap = document.createElement('div');
+    wrap.className = 'gridwrap';
+    var g = document.createElement('div');
+    g.className = 'grid';
+
+    // 見出しの行
+    g.appendChild(el('div', 'corner', '工事' + (isPC() ? '(注番)' : '')));
+    days.forEach(function (d, i) {
+      var c = 'hd' + (YY.isToday(d) ? ' today' : '') + (i === 5 ? ' sat' : '') + (i === 6 ? ' sun' : '');
+      var dt = YY.parseKey(d);
+      g.appendChild(el('div', c, '<b>' + YY.DOW[i] + '</b> <span>' +
+        (dt.getMonth() + 1) + '/' + dt.getDate() + '</span>'));
+    });
+
+    // 休み行(いちばん上に固定)
+    g.appendChild(el('div', 'rest', '休み'));
+    days.forEach(function (d) { g.appendChild(restCell(d, st[d])); });
+
+    // 🟡 余 行(PCのみ・読み取り専用)
+    if (isPC()) {
+      var yh = el('div', 'yohd', '<span>🟡 余</span>');
+      var tg = document.createElement('button');
+      tg.className = 'tg';
+      tg.textContent = S.yoOpen ? '▴' : '▾';
+      tg.title = S.yoOpen ? '余っている人をたたむ' : '余っている人をひらく';
+      tg.addEventListener('click', function () { S.yoOpen = !S.yoOpen; render(); });
+      yh.appendChild(tg);
+      g.appendChild(yh);
+      days.forEach(function (d) { g.appendChild(yoCell(st[d])); });
+    }
+
+    // 工事の行
+    var used = usedJobIds();
+    var cats = (S.cat === 'all') ? YY.CATEGORIES.order : [S.cat];
+    var any = false;
+    cats.forEach(function (cat) {
+      var jobs = YY.jobsByCat(cat, used);
+      // 「使う工事だけ」= その週に1人でも入っている工事だけ
+      if (S.onlyUsed) jobs = jobs.filter(function (j) { return used[j.id]; });
+      if (S.cat === 'all') {
+        g.appendChild(el('div', 'cathd', esc(YY.CATEGORIES.labels[cat])));
+      }
+      jobs.forEach(function (j, i) {
+        any = true;
+        g.appendChild(jobCell(j, i, jobs.length));
+        days.forEach(function (d) { g.appendChild(planCell(j.id, d, st[d])); });
+      });
+      // カテゴリごとの一番下に置きます(絞り込みに関わらず、いつでも出します)
+      g.appendChild(addJobRow(cat));
+    });
+
+    wrap.appendChild(g);
+    b.appendChild(wrap);
+
+    if (!any) {
+      if (S.onlyUsed && YY.master.jobs.length) {
+        // 工事はあるが、この週は誰も入っていないので隠れている状態
+        var msg = el('div', 'soon',
+          '<div class="e">📋</div>この週は、まだ誰も入っていません<br>' +
+          '<span style="font-size:14px">「すべて」に切り替えると工事を選べます</span>');
+        var sw = document.createElement('button');
+        sw.className = 'toggle add';
+        sw.style.marginTop = '14px';
+        sw.textContent = 'すべての工事を出す';
+        sw.addEventListener('click', function () { S.onlyUsed = false; render(); });
+        msg.appendChild(sw);
+        b.appendChild(msg);
+      } else {
+        b.appendChild(el('div', 'soon',
+          '<div class="e">📋</div>まだ工事がありません<br>' +
+          '<span style="font-size:14px">表の下の「＋ 工事を追加」から起こしてください</span>'));
+      }
+    }
+
+    if (!isPC()) b.appendChild(el('div', 'guide', '◀ 横にスワイプで 木・金・土・日 ▶'));
+    b.appendChild(el('div', 'legend',
+      '<span class="nm"><span class="sc">◎</span>=職長</span>' +
+      '<span style="color:var(--moji)">■ 自社</span>' +
+      '<span style="color:var(--kyoryoku)">■ 協力会社</span>'));
+  }
+
+  function weekNav() {
+    var lb = YY.weekLabel(S.monday);
+    var w = el('div', 'weeknav',
+      '<button data-w="-1">◀</button>' +
+      '<button class="now" data-w="0">今週</button>' +
+      '<div class="lbl"><b>' + lb.range + '</b><span>' + lb.year + '</span></div>' +
+      '<button data-w="1">▶</button>');
+    Array.prototype.forEach.call(w.querySelectorAll('button'), function (b) {
+      b.addEventListener('click', function () { goWeek(+b.getAttribute('data-w')); });
+    });
+    return w;
+  }
+
+  function catTabs() {
+    var c = el('div', 'cats', '');
+    var list = [];
+    if (isPC()) list.push({ k: 'all', l: 'すべて' });
+    YY.CATEGORIES.order.forEach(function (n) {
+      list.push({ k: n, l: YY.CATEGORIES.labels[n] });
+    });
+    list.forEach(function (it) {
+      var b = document.createElement('button');
+      b.textContent = it.l;
+      if (S.cat === it.k) b.className = 'on';
+      b.addEventListener('click', function () { S.cat = it.k; render(); });
+      c.appendChild(b);
+    });
+    return c;
+  }
+
+  /**
+   * 「使う工事だけ / すべて」の切り替え。
+   * 工事が増えると縦に長くなるので、既定はその週に人が入っている工事だけです。
+   */
+  function filterBar() {
+    var used = usedJobIds();
+    var cats = (S.cat === 'all') ? YY.CATEGORIES.order : [S.cat];
+    var shown = 0, hidden = 0;
+    cats.forEach(function (cat) {
+      YY.jobsByCat(cat, used).forEach(function (j) {
+        if (used[j.id]) shown++; else hidden++;
+      });
+    });
+
+    var bar = el('div', 'filterbar', '');
+    var seg = el('div', 'seg', '');
+    [{ k: true, l: '使う工事だけ' }, { k: false, l: 'すべて' }].forEach(function (it) {
+      var b2 = document.createElement('button');
+      b2.textContent = it.l;
+      if (S.onlyUsed === it.k) b2.className = 'on';
+      b2.addEventListener('click', function () { S.onlyUsed = it.k; render(); });
+      seg.appendChild(b2);
+    });
+    bar.appendChild(seg);
+
+    var msg = '';
+    if (S.onlyUsed) {
+      msg = hidden
+        ? '<b>' + hidden + '件</b>を隠しています(この週は誰も入っていません)'
+        : 'この週に使う工事だけ出ています';
+    } else {
+      msg = '全' + (shown + hidden) + '件を出しています(この週に人が入っているのは ' + shown + '件)';
+    }
+    bar.appendChild(el('div', 'fmsg', msg));
+    return bar;
+  }
+
+  /** 予定に出てくる工事id(非表示にしていても、人が入っていれば表に残すため) */
+  function usedJobIds() {
+    var u = {};
+    var a = S.week.assign || {};
+    Object.keys(a).forEach(function (id) {
+      // その週のどこかに1人でも入っていれば「使用中」
+      var days = a[id] || {};
+      var has = Object.keys(days).some(function (d) {
+        var c = days[d] || {};
+        return Object.keys(c.members || {}).length > 0 || (c.extras || []).length > 0;
+      });
+      if (has) u[id] = true;
+    });
+    return u;
+  }
+
+  /* --- 工事名のセル(クリックで表示名を直せます) --------------------- */
+
+  /**
+   * 工事名のセル。クリックで編集の吹き出しが開きます。
+   * 注番は【入っているときだけ】行を出します(空欄で行を使いません)。
+   */
+  function jobCell(j, idx, total) {
+    var c = el('div', 'job', '');
+    c.setAttribute('data-job', j.id);
+    c.setAttribute('data-idx', idx);
+    c.setAttribute('data-total', total);
+
+    c.innerHTML = '<div class="n">' + esc(j.name) + '</div>' +
+      (j.no ? '<div class="no">' + esc(j.no) + '</div>' : '') +
+      // 「隠す」にしたのに表にある工事は、その理由をはっきり出します
+      (!j.active
+        ? '<div class="kept">' +
+          '<div class="badge">予定が入っているため表示中</div>' +
+          '<div class="why">予定を空にすると表から消えます</div>' +
+          '</div>'
+        : '');
+    c.title = j.name + (j.no ? '(' + j.no + ')' : '') +
+      (!j.active ? '\nこの工事は「表から隠す」にしていますが、予定が入っているので表示しています' : '') +
+      '\nクリックで工事を直せます';
+    c.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (!S.online) { toast('電波が届いていません'); return; }
+      openJobPop(j.id);
+    });
+    return c;
+  }
+
+  /** カテゴリの一番下に置く「＋ 工事を追加」の行 */
+  function addJobRow(cat) {
+    var c = el('div', 'addjob', '');
+    c.style.gridColumn = '1 / -1';
+    var b = document.createElement('button');
+    b.innerHTML = '＋ 工事を追加' +
+      (S.cat === 'all' ? ' <span>' + esc(YY.CATEGORIES.labels[cat]) + '</span>' : '');
+    b.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (!S.online) { toast('電波が届いていません'); return; }
+      openJobPop(null, cat);       // 新規。いま見ているカテゴリが初期選択です
+    });
+    c.appendChild(b);
+    return c;
+  }
+
+  /* =================================================================
+     工事の呼び名を直す吹き出し
+     ================================================================= */
+
+  /**
+   * 工事の追加・編集の吹き出し。表の幅に縛られません。
+   *   jobId が null … 新規追加(cat が初期選択のカテゴリ)
+   *   jobId あり     … その工事を直す
+   */
+  function openJobPop(jobId, cat) {
+    var isNew = !jobId;
+    var j = isNew ? null : YY.master.jobById[jobId];
+    if (!isNew && !j) { toast('その工事が見つかりません'); return; }
+
+    S.editJob = jobId || '__new__';
+    S.editCat = isNew ? (cat || (S.cat === 'all' ? 1 : S.cat)) : j.category;
+    S.editNewCat = cat || null;
+
+    var pop = $('jobpop');
+    pop.innerHTML = '';
+    pop.appendChild(el('div', 'arrow', ''));
+
+    var inr = el('div', 'in', '');
+    inr.appendChild(el('div', 'ttl', isNew ? '工事の追加' : '工事の編集'));
+    inr.appendChild(el('hr', '', ''));
+
+    /* 工事名 */
+    var f1 = el('div', 'fld', '<div class="lb">工事名</div>');
+    var inName = document.createElement('input');
+    inName.type = 'text';
+    inName.maxLength = YY.JOB_NAME_MAX;
+    inName.value = isNew ? '' : j.name;
+    inName.placeholder = '例:チタン調整槽ポンプカップリングカバー';
+    f1.appendChild(inName);
+    inr.appendChild(f1);
+    if (!isNew) {
+      inr.appendChild(el('div', 'fld',
+        '<div class="lb"></div><div class="note">空にして決定すると、この工事を削除します</div>'));
+    }
+
+    /* 注番(任意) */
+    var f2 = el('div', 'fld', '<div class="lb">注番<small>(任意)</small></div>');
+    var inNo = document.createElement('input');
+    inNo.type = 'text';
+    inNo.className = 'sub';
+    inNo.maxLength = YY.JOB_NO_MAX;
+    inNo.value = isNew ? '' : (j.no || '');
+    inNo.placeholder = '空のままで登録できます';
+    f2.appendChild(inNo);
+    inr.appendChild(f2);
+
+    /* カテゴリ */
+    var f3 = el('div', 'fld', '<div class="lb">カテゴリ</div>');
+    var cbox = el('div', 'cats2', '');
+    YY.CATEGORIES.order.forEach(function (n) {
+      var b = document.createElement('button');
+      b.textContent = YY.CATEGORIES.labels[n];
+      b.className = (S.editCat === n) ? 'on' : '';
+      b.addEventListener('click', function () {
+        S.editCat = n;
+        Array.prototype.forEach.call(cbox.children, function (x) {
+          x.className = (x === b) ? 'on' : '';
+        });
+      });
+      cbox.appendChild(b);
+    });
+    f3.appendChild(cbox);
+    inr.appendChild(f3);
+
+    /* 並べ替えと非表示(直すときだけ) */
+    if (!isNew) {
+      inr.appendChild(el('hr', '', ''));
+      var anchor = document.querySelector('.grid .job[data-job="' + jobId + '"]');
+      var idx = anchor ? +anchor.getAttribute('data-idx') : 0;
+      var total = anchor ? +anchor.getAttribute('data-total') : 1;
+
+      var tools = el('div', 'tools', '');
+      var up = document.createElement('button');
+      up.innerHTML = '↑ 上へ'; up.disabled = idx <= 0;
+      up.addEventListener('click', function () { doMove(jobId, -1); });
+      var dn = document.createElement('button');
+      dn.innerHTML = '↓ 下へ'; dn.disabled = idx >= total - 1;
+      dn.addEventListener('click', function () { doMove(jobId, 1); });
+      var hide = document.createElement('button');
+      hide.className = 'hide' + (j.active ? '' : ' on');
+      hide.textContent = j.active ? '表から隠す' : '表に出す';
+      hide.addEventListener('click', function () {
+        YY.setJobActive(jobId, !j.active).then(function () {
+          toast(j.active ? '表から隠しました' : '表に出しました');
+          closeJobPop();
+        }).catch(function (e) { toast('切り替えできませんでした:' + e.message); });
+      });
+      // 先週から1行まるごと持ってきます
+      var cp = document.createElement('button');
+      var srcN = lastWeekCount(jobId);
+      cp.className = 'copyw';
+      cp.innerHTML = '⧉ 先週からコピー' +
+        (srcN > 0 ? ' <span>' + srcN + 'マス</span>' : srcN === 0 ? ' <span>先週は空</span>' : '');
+      cp.disabled = (srcN === 0);
+      cp.addEventListener('click', function () { copyRowFromLastWeek(jobId); });
+
+      tools.appendChild(up); tools.appendChild(dn); tools.appendChild(hide);
+      inr.appendChild(tools);
+      inr.appendChild(cp);
+      inr.appendChild(el('div', 'note',
+        '隠した工事も、その週に人が入っていれば表に残ります。データは消えません'));
+    }
+
+    var err = el('div', 'err', '');
+    err.style.display = 'none';
+    inr.appendChild(err);
+
+    inr.appendChild(el('hr', '', ''));
+    var btns = el('div', 'btns', '');
+    var bNo = document.createElement('button');
+    bNo.textContent = 'やめる';
+    bNo.addEventListener('click', closeJobPop);
+    var bOk = document.createElement('button');
+    bOk.className = 'ok'; bOk.textContent = '決定';
+    bOk.addEventListener('click', submit);
+    btns.appendChild(bNo); btns.appendChild(bOk);
+    inr.appendChild(btns);
+    pop.appendChild(inr);
+
+    function submit() {
+      var nm = (inName.value || '').trim();
+
+      // 工事名を空にして決定 = 削除(新規はまだ何も無いので、いままでどおり注意だけ)
+      if (!nm) {
+        if (isNew) {
+          err.textContent = '工事名を入れてください';
+          err.style.display = '';
+          inName.focus();
+          return;
+        }
+        removeJob(jobId, j.name);
+        return;
+      }
+
+      var no = (inNo.value || '').trim();
+      var cat = S.editCat;
+      closeJobPop();
+      if (isNew) {
+        YY.addJob(nm, cat, no).then(function () {
+          toast('「' + nm + '」を追加しました');
+        }).catch(function (e) { toast('追加できませんでした:' + e.message); });
+      } else {
+        YY.updateJob(jobId, { name: nm, no: no, category: cat }).then(function () {
+          toast('工事を直しました');
+        }).catch(function (e) { toast('直せませんでした:' + e.message); });
+      }
+    }
+
+    [inName, inNo].forEach(function (x) {
+      x.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); submit(); }
+        if (e.key === 'Escape') { e.preventDefault(); closeJobPop(); }
+      });
+    });
+
+    $('popmask').classList.add('on');
+    pop.classList.add('on');
+    positionJobPop();
+    inName.focus();
+    inName.setSelectionRange(inName.value.length, inName.value.length);
+  }
+
+  /**
+   * 工事を消します。予定が入っている場合は、それも消えることを伝えてから。
+   * 記録を残したいときは「表から隠す」を案内します。
+   */
+  function removeJob(jobId, name) {
+    YY.jobUsage(jobId).then(function (u) {
+      var msg = u.cells
+        ? '「' + name + '」には予定が入っています。\n' +
+          '削除すると、その予定もすべて消えます。\n' +
+          '記録を残したい場合は「表から隠す」を使ってください。\n\n' +
+          '本当に削除しますか?'
+        : '「' + name + '」を削除しますか?';
+      if (!confirm(msg)) return;
+
+      closeJobPop();
+      YY.deleteJob(jobId).then(function (res) {
+        toast('「' + name + '」を削除しました' +
+          (res.cells ? '(予定 ' + res.cells + 'マスも消しました)' : ''));
+      }).catch(function (e) {
+        toast('削除できませんでした:' + (e && e.message ? e.message : ''));
+      });
+    }).catch(function (e) {
+      toast('調べられませんでした:' + (e && e.message ? e.message : ''));
+    });
+  }
+
+  /* =================================================================
+     先週からのコピー
+       ・その日すでに別の工事(や休み)に入っている人は自動で外します
+       ・しるし(◎△☆✕)と選んだ順はそのまま持ってきます
+     ================================================================= */
+
+  /** 先週の同じ曜日の日付 */
+  function prevDate(dateKey) { return YY.toKey(YY.addDays(dateKey, -7)); }
+
+  /**
+   * 先週のセルを、この週へ持ってこられる形に整えます。
+   * 戻り値 { members, extras, count, dropped:[外した名前] }
+   */
+  function fromLastWeek(jobId, dateKey) {
+    var src = YY.cellOf(S.prevWeek || { assign: {} }, jobId, prevDate(dateKey));
+    var day = YY.computeDay(S.week, dateKey);
+    var members = {}, dropped = [], n = 0;
+
+    Object.keys(src.members).forEach(function (name) {
+      var where = day.placements[name] || [];
+      // その日ほかの行(工事・休み)に入っている人は連れてきません
+      if (where.some(function (k) { return k !== jobId; })) { dropped.push(name); return; }
+      members[name] = {
+        mark: (src.members[name] || {}).mark || '',
+        ord: (typeof (src.members[name] || {}).ord === 'number') ? src.members[name].ord : n
+      };
+      n++;
+    });
+
+    var extras = src.extras.slice();
+    return { members: members, extras: extras, count: n + extras.length, dropped: dropped };
+  }
+
+  /** 先週のその工事に、何マス入っているか */
+  function lastWeekCount(jobId) {
+    if (!S.prevWeek) return -1;                  // まだ読めていません
+    var n = 0;
+    YY.weekDates(S.monday).forEach(function (d) {
+      if (YY.cellCount(S.prevWeek, jobId, prevDate(d))) n++;
+    });
+    return n;
+  }
+
+  /** 【A】工事1行ぶん(月〜日)を先週から持ってきます */
+  function copyRowFromLastWeek(jobId) {
+    if (!S.online) { toast('電波が届いていません'); return; }
+    var name = YY.jobLabel(jobId).name;
+    var src = lastWeekCount(jobId);
+    if (src < 0) { toast('先週を読み込み中です。少し待ってください'); return; }
+    if (src === 0) { alert('先週の「' + name + '」は空です。\nコピーするものがありません。'); return; }
+
+    if (!confirm('先週の「' + name + '」の予定(月〜日 ' + src + 'マス)を、\n' +
+      'この週にコピーしますか?\n\n' +
+      'すでに入っているセルは、そのまま残します。')) return;
+
+    var jobs = [], copied = 0, kept = 0, dropped = {};
+    YY.weekDates(S.monday).forEach(function (d) {
+      if (!YY.cellCount(S.prevWeek, jobId, prevDate(d))) return;   // 先週が空の日
+      if (YY.cellCount(S.week, jobId, d)) { kept++; return; }      // すでに入っている
+
+      var c = fromLastWeek(jobId, d);
+      c.dropped.forEach(function (x) { dropped[x] = true; });
+      if (!c.count) return;
+      jobs.push(YY.saveCell(S.monday, jobId, d, { members: c.members, extras: c.extras }));
+      copied++;
+    });
+
+    if (!jobs.length) {
+      toast(kept ? kept + 'マスは既に入っていたので、そのままです' : 'コピーするものがありませんでした');
+      return;
+    }
+
+    closeJobPop();
+    Promise.all(jobs).then(function () {
+      var msg = copied + 'マスをコピーしました';
+      if (kept) msg += '(' + kept + 'マスは既に入っていたのでそのまま)';
+      var d2 = Object.keys(dropped);
+      if (d2.length) msg += ' / ' + d2.length + '名は既に別の工事に入っていたので外しました';
+      toast(msg);
+    }).catch(function (e) {
+      toast('コピーできませんでした:' + (e && e.message ? e.message : ''));
+    });
+  }
+
+  function doMove(jobId, dir) {
+    YY.moveJob(jobId, dir).then(function (moved) {
+      if (moved) toast(dir < 0 ? '上へ動かしました' : '下へ動かしました');
+      closeJobPop();
+    }).catch(function (e) { toast('動かせませんでした:' + e.message); });
+  }
+
+  function closeJobPop() {
+    S.editJob = null;
+    $('jobpop').classList.remove('on');
+    $('popmask').classList.remove('on');
+  }
+
+  /** 工事名を指す位置に吹き出しを置きます。画面からはみ出さないよう寄せます */
+  function positionJobPop() {
+    if (!S.editJob) return;
+    var pop = $('jobpop');
+    var anchor;
+    if (S.editJob === '__member__') {
+      anchor = S.memPop && S.memPop.anchor;
+      // 一覧が描き直されると要素が入れ替わるので、探し直します
+      if (anchor && !document.body.contains(anchor) && S.memPop.id) {
+        anchor = document.querySelector('.wrow[data-member="' + S.memPop.id + '"]');
+      }
+    } else if (S.editJob === '__new__') {
+      // 新規は、押した「＋ 工事を追加」を指します
+      var rows = document.querySelectorAll('.addjob');
+      var n = (S.cat === 'all' && S.editNewCat) ? YY.CATEGORIES.order.indexOf(S.editNewCat) : 0;
+      anchor = rows[n] || rows[0];
+    } else {
+      anchor = document.querySelector('.grid .job[data-job="' + S.editJob + '"]');
+    }
+    if (!anchor) { closeJobPop(); return; }
+
+    var a = anchor.getBoundingClientRect();
+    var pw = pop.offsetWidth, ph = pop.offsetHeight;
+    var pad = 12;
+
+    // 下に入らなければ上に出します
+    var below = (a.bottom + 10 + ph) <= window.innerHeight || a.top < ph + 20;
+    pop.classList.toggle('below', below);
+    pop.classList.toggle('above', !below);
+    pop.style.top = (below ? a.bottom + 10 : a.top - ph - 10) + 'px';
+
+    // 左ぞろえ。右にはみ出すなら左へ寄せます
+    var left = Math.min(a.left, window.innerWidth - pw - pad);
+    pop.style.left = Math.max(pad, left) + 'px';
+
+    // 三角は工事名の真ん中を指します
+    var ar = pop.querySelector('.arrow');
+    if (ar) {
+      var cx = a.left + a.width / 2 - Math.max(pad, left) - 7;
+      ar.style.left = Math.max(14, Math.min(pw - 28, cx)) + 'px';
+    }
+  }
+
+
+  /* --- セル ------------------------------------------------------- */
+
+  function planCell(jobKey, dateKey, day) {
+    var b = document.createElement('button');
+    b.className = 'cell' + (YY.isToday(dateKey) ? ' today' : '');
+    var d = YY.displayCell(S.week, jobKey, dateKey);
+
+    if (d.count === 0) {
+      b.classList.add('empty');
+      b.innerHTML = '＋';
+    } else {
+      b.innerHTML = cellInner(d, day, jobKey);
+    }
+    b.addEventListener('click', function () { openSheet(jobKey, dateKey); });
+    return b;
+  }
+
+  function restCell(dateKey, day) {
+    var b = document.createElement('button');
+    b.className = 'cell rest' + (YY.isToday(dateKey) ? ' today' : '');
+    var d = YY.displayCell(S.week, YY.REST_KEY, dateKey);
+    if (d.count === 0) {
+      b.classList.add('empty');
+      b.textContent = '—';
+    } else {
+      b.innerHTML = joinNames(d.rows.map(function (r) { return nameHTML(r, day, YY.REST_KEY); })
+        .concat(d.extras.map(function (x) { return '<span class="nm">' + esc(x) + '</span>'; }))) +
+        '<div class="cnt">' + d.count + '名</div>';
+    }
+    b.addEventListener('click', function () { openSheet(YY.REST_KEY, dateKey); });
+    return b;
+  }
+
+  /**
+   * その日の「余」(計算で出すだけ。押しても何も起きません)
+   * たたんでいるとき = 人数だけ。ひらいたとき = 名前を並べます
+   */
+  function yoCell(day) {
+    var d = document.createElement('div');
+    var names = day.free;
+
+    if (!S.yoOpen) {
+      d.className = 'yo closed';
+      d.innerHTML = names.length
+        ? '<div class="big">' + names.length + '名</div>'
+        : '<div class="none">—</div>';
+      d.title = names.length ? names.join('・') : '';
+      return d;
+    }
+
+    d.className = 'yo';
+    if (!names.length) { d.innerHTML = '<div class="none">—</div>'; return d; }
+    d.innerHTML = joinNames(names.map(function (n) {
+      return '<span class="nm' + (YY.isCoop(n) ? ' coop' : '') + '">' + esc(n) + '</span>';
+    })) + '<div class="cnt">' + names.length + '名</div>';
+    return d;
+  }
+
+  /**
+   * 名前をつなぎます。
+   *   PC   … Excelと同じ「・」区切り(中点は名前より薄い色)
+   *   スマホ … 1人1行なので改行のまま
+   */
+  function joinNames(list) {
+    return list.join(isPC() ? '<span class="sep">・</span>' : '<br>');
+  }
+
+  function cellInner(d, day, jobKey) {
+    var all = d.rows.map(function (r) { return nameHTML(r, day, jobKey); })
+      .concat(d.extras.map(function (x) { return '<span class="nm">' + esc(x) + '</span>'; }));
+    var lim = 5;
+    var shown = all.slice(0, lim);
+    var more = all.length - shown.length;
+    return joinNames(shown) +
+      (more > 0 ? '<div class="more">+ほか' + more + '名</div>' : '') +
+      '<div class="cnt">' + d.count + '名</div>';
+  }
+
+  /** 1人ぶんの表示。しるしは名前の直前に、色付きで出します */
+  function nameHTML(row, day, jobKey) {
+    var dup = day && day.placements[row.name] && day.placements[row.name].length >= 2;
+    var mk = row.mark ? '<span class="sc">' + esc(row.mark) + '</span>' : '';
+    return '<span class="nm' + (row.coop ? ' coop' : '') + '">' + mk +
+      '<span class="' + (dup ? 'nm dup' : '') + '">' + esc(row.name) + '</span></span>';
+  }
+
+  /* =================================================================
+     選択シート
+     ================================================================= */
+
+  function openSheet(jobKey, dateKey) {
+    if (!S.online) { toast('電波が届いていません'); return; }
+
+    var c = YY.cellOf(S.week, jobKey, dateKey);
+    var members = {};
+    Object.keys(c.members).forEach(function (n) {
+      members[n] = { mark: (c.members[n] || {}).mark || '', ord: (c.members[n] || {}).ord };
+    });
+    // ord が無い古いデータには、いまの並びで番号を振り直します
+    var i = 0;
+    Object.keys(members).forEach(function (n) {
+      if (typeof members[n].ord !== 'number') members[n].ord = i;
+      i++;
+    });
+
+    S.sheet = {
+      jobKey: jobKey, dateKey: dateKey,
+      members: members,
+      extras: c.extras.slice(),
+      moves: [],       // よそのセルから連れてくる人 [{jobKey,dateKey,name}]
+      day: null        // その日の状態(チップの色を決めるのに使います)
+    };
+    refreshSheet();
+    $('mask').classList.add('on');
+    $('sheet').classList.add('on');
+  }
+
+  function closeSheet() {
+    closeMarkPop();
+    S.sheet = null;
+    $('mask').classList.remove('on');
+    $('sheet').classList.remove('on');
+  }
+
+  function refreshSheet() {
+    var sh = S.sheet; if (!sh) return;
+    var day = YY.computeDay(S.week, sh.dateKey);
+    var lab = YY.jobLabel(sh.jobKey);
+    var box = $('sheet');
+    // 組み直すときも、見ていた位置に戻します
+    var keepTop = (box.querySelector('.sb') || {}).scrollTop || 0;
+    box.innerHTML = '';
+
+    // ヘッダー
+    box.appendChild(el('div', 'sh',
+      '<div class="j">' + esc(lab.name) + '</div>' +
+      '<div class="d">' + YY.dayLabel(sh.dateKey) + ' タップして選んでください</div>'));
+
+    var body = el('div', 'sb', '');
+
+    // 前日と同じにする
+    var prev = YY.toKey(YY.addDays(sh.dateKey, -1));
+    var pc = YY.displayCell(S.week, sh.jobKey, prev);
+    var pb = document.createElement('button');
+    pb.className = 'copyprev';
+    var pnames = pc.rows.map(function (r) { return YY.nameWithMarks(r); }).concat(pc.extras);
+    pb.innerHTML = '⧉ 前日(' + YY.DOW[YY.dowIndex(prev)] + ')と同じにする' +
+      (pnames.length ? ' <span>' + esc(pnames.slice(0, 4).join('・')) +
+        (pnames.length > 4 ? ' ほか' : '') + '</span>' : '');
+    pb.disabled = pc.count === 0;
+    pb.addEventListener('click', function () {
+      var src = YY.cellOf(S.week, sh.jobKey, prev);
+      sh.members = {};
+      Object.keys(src.members).forEach(function (n) {
+        sh.members[n] = { mark: (src.members[n] || {}).mark || '', ord: (src.members[n] || {}).ord || 0 };
+      });
+      sh.extras = src.extras.slice();
+      sh.moves = [];               // 入れ替わるので、連れてくる予約は取り消します
+      refreshSheet();
+    });
+    body.appendChild(pb);
+
+    /* 【B】先週の同じ曜日から、このセルだけ持ってきます */
+    var lwDow = YY.DOW[YY.dowIndex(sh.dateKey)];
+    var lwSrc = S.prevWeek ? YY.displayCell(S.prevWeek, sh.jobKey, prevDate(sh.dateKey)) : null;
+    var lw = document.createElement('button');
+    lw.className = 'copyprev';
+    lw.innerHTML = '⧉ 先週の' + lwDow + '曜からコピー' +
+      (lwSrc && lwSrc.count
+        ? ' <span>' + esc(lwSrc.rows.map(YY.nameWithMarks).concat(lwSrc.extras).slice(0, 4).join('・')) +
+          (lwSrc.count > 4 ? ' ほか' : '') + '</span>'
+        : (!S.prevWeek ? ' <span>読み込み中…</span>' : ' <span>先週は空</span>'));
+    lw.disabled = !lwSrc || !lwSrc.count;
+    lw.addEventListener('click', function () {
+      var c = fromLastWeek(sh.jobKey, sh.dateKey);
+      sh.members = c.members;
+      sh.extras = c.extras;
+      sh.moves = [];
+      refreshSheet();
+      if (c.dropped.length) {
+        toast(c.dropped.length + '名は既に別の工事に入っていたので外しました:' + c.dropped.join('・'));
+      } else {
+        toast('先週の' + lwDow + '曜から入れました。「きめる」で確定します');
+      }
+    });
+    body.appendChild(lw);
+
+    /* --- 名前は1か所だけ。状態は見た目で分けます -----------------------
+       白      … 余っている(そのまま選べる)
+       緑      … いま選んでいる
+       灰の破線 … その日ほかの工事に入っている(→行き先)
+       灰      … その日休み(→休み)
+       並び順は名簿順で固定。選んでもチップは動きません
+       ------------------------------------------------------------------- */
+    sh.day = day;
+    var g1 = el('div', 'grp yo',
+      '<div class="gt">🟡 だれを入れますか<span id="yoSum" class="sum"></span></div>');
+    var c1 = el('div', 'chips', '');
+    var listed = YY.selectableWorkers(sh.members);
+    sh.listed = listed;
+    listed.forEach(function (w) { c1.appendChild(pickChip(w.name, w.unknown)); });
+    if (!listed.length) {
+      c1.innerHTML = '<div style="font-size:14px;color:#8a6516">' +
+        'メンバーが登録されていません</div>';
+    }
+    g1.appendChild(c1);
+
+    var unknownN = listed.filter(function (w) { return w.unknown; }).length;
+    g1.appendChild(el('div', 'ghint',
+      '灰色=その日すでに行き先がある人。タップすると移動を確かめます' +
+      (unknownN ? '<br><b style="color:var(--ki)">オレンジの破線=名簿にない人(' +
+        unknownN + '名)。同じ名前で登録するとつながります</b>' : '')));
+
+    var fix = document.createElement('button');
+    fix.className = 'fixlink';
+    fix.textContent = '👥 名簿を直す';
+    fix.addEventListener('click', function () {
+      closeSheet();
+      S.tab = 'members';
+      Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function (x) {
+        x.classList.toggle('on', x.getAttribute('data-tab') === 'members');
+      });
+      render();
+    });
+    g1.appendChild(fix);
+    body.appendChild(g1);
+
+    // 名簿にない人
+    var g4 = el('div', 'grp', '<div class="gt sub">名簿にない人(応援・臨時だけ手入力)</div>');
+    var row = el('div', 'extra-row', '<input id="exIn" placeholder="例:山口(○○興業)" maxlength="40"><button id="exAdd">＋追加</button>');
+    g4.appendChild(row);
+    if (sh.extras.length) {
+      var c4 = el('div', 'chips', '');
+      c4.style.marginTop = '8px';
+      sh.extras.forEach(function (x, i) {
+        var b = document.createElement('button');
+        b.className = 'chip on';
+        b.innerHTML = esc(x) + ' ✕';
+        b.addEventListener('click', function () { sh.extras.splice(i, 1); refreshSheet(); });
+        c4.appendChild(b);
+      });
+      g4.appendChild(c4);
+    }
+    body.appendChild(g4);
+
+    // いま何名
+    body.appendChild(el('div', 'nowsel', '<span id="nowSel"></span>'));
+    box.appendChild(body);
+
+    closeMarkPop();
+    updateCount();
+
+    // フッター
+    var f = el('div', 'sf',
+      '<button class="btn-clear">空にする</button>' +
+      '<button class="btn-cancel">やめる</button>' +
+      '<button class="btn-ok">きめる</button>');
+    f.querySelector('.btn-clear').addEventListener('click', function () {
+      // 連れてくる予約も一緒に取り消します(元のセルを触らないため)
+      sh.members = {}; sh.extras = []; sh.moves = [];
+      refreshSheet();
+    });
+    f.querySelector('.btn-cancel').addEventListener('click', closeSheet);
+    f.querySelector('.btn-ok').addEventListener('click', commitSheet);
+    box.appendChild(f);
+
+    // 名簿にない人の追加
+    var inp = box.querySelector('#exIn');
+    var add = function () {
+      var v = (inp.value || '').trim();
+      if (!v) return;
+      sh.extras.push(v.slice(0, 40));
+      refreshSheet();
+      var i2 = $('sheet').querySelector('#exIn'); if (i2) i2.focus();
+    };
+    box.querySelector('#exAdd').addEventListener('click', add);
+    inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+
+    if (keepTop) body.scrollTop = keepTop;
+  }
+
+  /**
+   * その人がいまどの状態か。
+   *   'on'      いま選んでいる
+   *   'free'    余っている
+   *   'rest'    その日は休み
+   *   'to:注番' その日ほかの工事に入っている
+   */
+  function chipState(name) {
+    var sh = S.sheet;
+    if (sh.members[name]) return 'on';
+    var where = ((sh.day.placements[name] || [])).filter(function (k) { return k !== sh.jobKey; });
+    var onJob = where.filter(function (k) { return k !== YY.REST_KEY; });
+    if (onJob.length) return 'to:' + onJob[0];
+    if (where.indexOf(YY.REST_KEY) >= 0) return 'rest';
+    return 'free';
+  }
+
+  /** チップの見た目だけを塗り替えます(位置は動かしません) */
+  function styleChip(b, name, unknown) {
+    var sh = S.sheet;
+    var st = chipState(name);
+    var coop = YY.isCoop(name) ? ' coop' : '';
+    if (unknown) coop += ' unknown';
+    if (st === 'on') {
+      var mk = sh.members[name].mark || '';
+      b.className = 'chip on' + coop;
+      b.innerHTML = (mk ? '<span class="sc">' + esc(mk) + '</span>' : '') + esc(name) + ' ✓';
+      b.title = '';
+    } else if (st === 'rest') {
+      b.className = 'chip rest';
+      b.innerHTML = esc(name);
+      b.title = name + ' … この日は休み';
+    } else if (st.indexOf('to:') === 0) {
+      // チップは名前だけ。行き先は色(灰の破線)とツールチップで分かります
+      b.className = 'chip placed';
+      b.innerHTML = esc(name);
+      b.title = name + ' … この日は「' + YY.jobLabel(st.slice(3)).name + '」';
+    } else {
+      b.className = 'chip' + coop;
+      b.innerHTML = esc(name);
+      b.title = '';
+    }
+  }
+
+  /**
+   * 名前チップ。押しても並びは変わらず、その場で色だけ変わります。
+   *   余っている人   … 1回目で選ぶ / 2回目でしるし / 3回目で外す
+   *   行き先がある人 … 確かめてから連れてきます
+   */
+  function pickChip(name, unknown) {
+    var sh = S.sheet;
+    var b = document.createElement('button');
+    styleChip(b, name, unknown);
+    b.addEventListener('click', function () {
+      var st = chipState(name);
+
+      if (st === 'on') {
+        // 2回目 = しるしを選ぶ吹き出しを、このチップのすぐそばに出します
+        openMarkPop(b, name);
+        return;
+      } else if (st === 'free') {
+        sh.members[name] = { mark: '', ord: YY.nextOrd(sh.members) };
+      } else {
+        var from = (st === 'rest') ? YY.REST_KEY : st.slice(3);
+        // 行き先はチップに出していないので、ここではっきり伝えます
+        var msg = (st === 'rest')
+          ? name + ' さんはこの日「休み」です。\n「' + YY.jobLabel(sh.jobKey).name + '」に入れますか?'
+          : name + ' さんはこの日「' + YY.jobLabel(from).name + '」に入っています。\n' +
+            '「' + YY.jobLabel(sh.jobKey).name + '」に移動しますか?';
+        if (!confirm(msg)) return;
+        sh.moves.push({ jobKey: from, dateKey: sh.dateKey, name: name });
+        sh.members[name] = { mark: '', ord: YY.nextOrd(sh.members) };
+      }
+
+      // 描き直さずに、押したチップと下の表示だけ更新します(スクロールが動きません)
+      styleChip(b, name, unknown);
+      updateCount();
+    });
+    return b;
+  }
+
+  /* --- しるしの吹き出し ------------------------------------------------
+     押したチップのすぐ下(入らなければ上)に出します。
+     固定の場所ではないので、画面外で気づかない、ということが起きません。
+     ------------------------------------------------------------------- */
+
+  function openMarkPop(chip, name) {
+    var sh = S.sheet; if (!sh || !sh.members[name]) return;
+    var unknown = !YY.isKnown(name);
+    var cur = sh.members[name].mark || '';
+    var pop = $('markpop');
+    pop.innerHTML = '';
+    pop.appendChild(el('div', 'arrow', ''));
+
+    var inr = el('div', 'in', '');
+    inr.appendChild(el('div', 'who', esc(name) + ' に付けるしるし'));
+
+    var row = el('div', 'row', '');
+    YY.MARKS.forEach(function (mk) {
+      var b = document.createElement('button');
+      b.textContent = mk === '' ? 'なし' : mk;
+      b.className = (cur === mk ? 'on' : '') + (mk === '' ? ' none' : '');
+      if (mk === YY.FOREMAN_MARK) b.title = 'このマスの職長';
+      b.addEventListener('click', function () {
+        sh.members[name].mark = mk;
+        styleChip(chip, name, unknown);
+        closeMarkPop();
+        updateCount();
+      });
+      row.appendChild(b);
+    });
+    inr.appendChild(row);
+
+    /* その他:自由に打てるしるし(4文字まで) */
+    var free = el('div', 'freemark', '<span class="lb3">その他</span>');
+    var fi = document.createElement('input');
+    fi.type = 'text';
+    fi.maxLength = YY.MARK_MAX;
+    fi.placeholder = '例:AM・PM・採寸';
+    fi.value = (YY.MARKS.indexOf(cur) >= 0) ? '' : cur;   // ボタンに無いしるしなら出しておきます
+    fi.addEventListener('click', function (e) { e.stopPropagation(); });
+    var apply = function () {
+      sh.members[name].mark = YY.cleanMark(fi.value);
+      styleChip(chip, name, unknown);
+      closeMarkPop();
+      updateCount();
+    };
+    fi.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); apply(); }
+      if (e.key === 'Escape') { e.preventDefault(); closeMarkPop(); }
+    });
+    var fb = document.createElement('button');
+    fb.className = 'ok3';
+    fb.textContent = 'つける';
+    fb.addEventListener('click', apply);
+    free.appendChild(fi);
+    free.appendChild(fb);
+    inr.appendChild(free);
+
+    inr.appendChild(el('div', 'hint2',
+      '◎=このマスの職長(何人でも付けられます)<br>そのほかのしるしに決まりはありません'));
+
+    var off = document.createElement('button');
+    off.className = 'off';
+    off.textContent = 'この人をここから外す';
+    off.addEventListener('click', function () {
+      delete sh.members[name];
+      sh.moves = sh.moves.filter(function (m) { return m.name !== name; });
+      styleChip(chip, name, unknown);
+      closeMarkPop();
+      updateCount();
+    });
+    inr.appendChild(off);
+    pop.appendChild(inr);
+
+    S.markChip = chip;
+    $('markmask').classList.add('on');
+    pop.classList.add('on');
+    positionMarkPop();
+  }
+
+  function closeMarkPop() {
+    S.markChip = null;
+    $('markpop').classList.remove('on');
+    $('markmask').classList.remove('on');
+  }
+
+  /** 押したチップを指す位置に置きます。画面の端でははみ出さないよう寄せます */
+  function positionMarkPop() {
+    var chip = S.markChip; if (!chip) return;
+    var pop = $('markpop');
+    var a = chip.getBoundingClientRect();
+    var pw = pop.offsetWidth, ph = pop.offsetHeight, pad = 12;
+
+    // 指している相手が画面から出たら閉じます(吹き出しだけ取り残さないため)
+    if (a.bottom < 0 || a.top > window.innerHeight) { closeMarkPop(); return; }
+
+    var below = (a.bottom + 8 + ph) <= window.innerHeight || a.top < ph + 16;
+    pop.classList.toggle('below', below);
+    pop.classList.toggle('above', !below);
+    var top = below ? a.bottom + 8 : a.top - ph - 8;
+    pop.style.top = Math.max(pad, Math.min(top, window.innerHeight - ph - pad)) + 'px';
+
+    // チップの中心に合わせ、はみ出す分だけ寄せます
+    var left = a.left + a.width / 2 - pw / 2;
+    left = Math.max(pad, Math.min(left, window.innerWidth - pw - pad));
+    pop.style.left = left + 'px';
+
+    var ar = pop.querySelector('.arrow');
+    if (ar) {
+      var cx = a.left + a.width / 2 - left - 6;
+      ar.style.left = Math.max(12, Math.min(pw - 24, cx)) + 'px';
+    }
+  }
+
+  /** 「いま選んでいるのは○名」と、上の内訳を書き替えます */
+  function updateCount() {
+    var sh = S.sheet; if (!sh) return;
+    var box = $('sheet');
+    var n = Object.keys(sh.members).length + sh.extras.length;
+    var el1 = box.querySelector('#nowSel');
+    if (el1) el1.innerHTML = 'いま選んでいるのは <b>' + n + '名</b>';
+
+    var free = 0, placed = 0, rest = 0;
+    YY.selectableWorkers(sh.members).forEach(function (w) {
+      var st = chipState(w.name);
+      if (st === 'free') free++;
+      else if (st === 'rest') rest++;
+      else if (st.indexOf('to:') === 0) placed++;
+    });
+    var el2 = box.querySelector('#yoSum');
+    if (el2) {
+      el2.innerHTML = '余' + free + '名 / 配置ずみ' + placed + '名' +
+        (rest ? ' / 休み' + rest + '名' : '');
+    }
+  }
+
+  /** 「きめる」。このセルと、連れてきた元のセルだけを書きます */
+  function commitSheet() {
+    var sh = S.sheet; if (!sh) return;
+    if (!S.online) { toast('電波が届いていません'); return; }
+
+    var jobs = [];
+
+    // 元のセルから外す
+    var byCell = {};
+    sh.moves.forEach(function (mv) {
+      var k = mv.jobKey + '|' + mv.dateKey;
+      byCell[k] = byCell[k] || { jobKey: mv.jobKey, dateKey: mv.dateKey, names: [] };
+      byCell[k].names.push(mv.name);
+    });
+    Object.keys(byCell).forEach(function (k) {
+      var mv = byCell[k];
+      var src = YY.cellOf(S.week, mv.jobKey, mv.dateKey);
+      var mem = {};
+      Object.keys(src.members).forEach(function (n) {
+        if (mv.names.indexOf(n) < 0) mem[n] = src.members[n];
+      });
+      jobs.push(YY.saveCell(S.monday, mv.jobKey, mv.dateKey, { members: mem, extras: src.extras }));
+    });
+
+    // このセル
+    jobs.push(YY.saveCell(S.monday, sh.jobKey, sh.dateKey, {
+      members: sh.members, extras: sh.extras
+    }));
+
+    closeSheet();
+    Promise.all(jobs).then(function () { toast('保存しました'); })
+      .catch(function (e) { toast('保存できませんでした:' + (e && e.message ? e.message : '')); });
+  }
+
+  /* =================================================================
+     画面4「配信」= LINEに貼る文
+     ================================================================= */
+
+  /**
+   * 曜日ピル7つ。チェックと配信で共通に使います。
+   * ⚠(重複)が1件でもある日には赤い点を付けます。
+   * 選んだ日は両方のタブで引き継ぎます(チェックした日をそのまま配信できます)。
+   */
+  function dayPills() {
+    var days = YY.weekDates(S.monday);
+    // 開いた直後は、きょう(その週になければ月曜)を選びます
+    if (days.indexOf(S.pickDate) < 0) {
+      var t = YY.todayKey();
+      S.pickDate = (days.indexOf(t) >= 0) ? t : days[0];
+    }
+    var pills = el('div', 'daypills', '');
+    days.forEach(function (d, i) {
+      var day = YY.computeDay(S.week, d);
+      var dt = YY.parseKey(d);
+      var btn = document.createElement('button');
+      btn.className = (d === S.pickDate ? 'on ' : '') + (i === 5 ? 'sat' : i === 6 ? 'sun' : '');
+      btn.innerHTML = '<div class="w">' + YY.DOW[i] + '</div>' +
+        '<div class="d">' + dt.getDate() + '</div>' +
+        (day.dup.length ? '<span class="dot"></span>' : '');
+      btn.title = day.dup.length ? '⚠ 重複が' + day.dup.length + '件あります' : '';
+      btn.addEventListener('click', function () { S.pickDate = d; render(); });
+      pills.appendChild(btn);
+    });
+    return pills;
+  }
+
+  /* =================================================================
+     画面2「チェック」= 重複・余・休みを見る
+     ================================================================= */
+
+  function renderCheck(b) {
+    b.appendChild(weekNav());
+    b.appendChild(dayPills());
+
+    var st = YY.computeDay(S.week, S.pickDate);
+    var box = el('div', 'checks', '');
+
+    /* ⚠ 重複(2か所に入っている) */
+    var c1 = el('div', 'card dup',
+      '<div class="ct"><div class="t">⚠ 重複(2か所に入っている)</div>' +
+      '<span class="n">' + st.dup.length + '名</span></div>');
+    if (!st.dup.length) {
+      c1.appendChild(el('div', 'msg', 'この日は重複していません'));
+    } else {
+      var d1 = el('div', 'body2', '');
+      st.dup.forEach(function (x) {
+        // 行き先を2つとも(3か所以上なら全部)併記します
+        var mark = markOf(st, x.name);
+        var to = x.jobs.map(function (k) { return YY.jobLabel(k).name; }).join(' と ');
+        d1.appendChild(el('div', 'dupitem',
+          '<div class="nm3">' + (mark ? '<span class="sc">' + esc(mark) + '</span>' : '') +
+          '<span class="wv">' + esc(x.name) + '</span></div>' +
+          '<div class="to">' + esc(to) + '</div>'));
+      });
+      c1.appendChild(d1);
+    }
+    box.appendChild(c1);
+
+    /* 🟡 余(まだ配置されていない) */
+    var c2 = el('div', 'card yo2',
+      '<div class="ct"><div class="t">🟡 余(まだ配置されていない)</div>' +
+      '<span class="n">' + st.free.length + '名</span></div>');
+    if (!st.free.length) {
+      c2.appendChild(el('div', 'msg', '全員どこかに入っています'));
+    } else {
+      var d2 = el('div', 'body2', '');
+      st.free.forEach(function (n) {
+        d2.appendChild(el('span', 'pill2' + (YY.isCoop(n) ? ' coop' : ''), esc(n)));
+      });
+      c2.appendChild(d2);
+    }
+    box.appendChild(c2);
+
+    /* 休み */
+    var c3 = el('div', 'card rest2',
+      '<div class="ct"><div class="t">休み</div>' +
+      '<span class="n">' + st.rest.length + '名</span></div>');
+    if (!st.rest.length) {
+      c3.appendChild(el('div', 'msg', 'この日は休みの人はいません'));
+    } else {
+      var d3 = el('div', 'body2', '');
+      // 並びは表と同じ(◎が先頭、あとは選んだ順)
+      var rc = YY.displayCell(S.week, YY.REST_KEY, S.pickDate);
+      rc.rows.forEach(function (row) {
+        d3.appendChild(el('span', 'pill2' + (row.coop ? ' coop' : ''),
+          (row.mark ? esc(row.mark) : '') + esc(row.name)));
+      });
+      rc.extras.forEach(function (x) { d3.appendChild(el('span', 'pill2', esc(x))); });
+      c3.appendChild(d3);
+    }
+    box.appendChild(c3);
+
+    /* 配置ずみ */
+    var sum = el('div', 'sumcard',
+      '配置ずみ:<b>' + st.placedCount + '名</b> / 全' + st.totalCount + '名');
+    if (st.totalCount) {
+      var nokori = st.totalCount - st.placedCount - st.rest.length;
+      sum.appendChild(el('div', 'sub2',
+        '休み ' + st.rest.length + '名' + (nokori > 0 ? ' / まだ決めていない ' + nokori + '名' : '')));
+    }
+    box.appendChild(sum);
+
+    b.appendChild(box);
+  }
+
+  /** その日その人に付いているしるし(重複カードで◎を出すため) */
+  function markOf(day, name) {
+    var assign = S.week.assign || {};
+    var found = '';
+    (day.placements[name] || []).forEach(function (jobKey) {
+      var c = YY.cellOf(S.week, jobKey, day.date);
+      var m = (c.members[name] || {}).mark || '';
+      if (m && !found) found = m;
+    });
+    return found;
+  }
+
+  function renderLine(b) {
+    b.appendChild(weekNav());
+    b.appendChild(dayPills());
+
+    // 本文。表示はコピーされる中身とまったく同じです(色を付けているだけ)
+    var rows = YY.lineLines(S.week, S.pickDate);
+    var text = rows.map(function (x) { return x.text; }).join('\n');
+    var box = el('div', 'linebox', '');
+    rows.forEach(function (x) {
+      var d = document.createElement('div');
+      d.className = x.kind;
+      if (x.kind === 'blank') {
+        d.innerHTML = '&nbsp;';
+      } else if (x.items && x.items.length) {
+        // 中身はコピーされる文字と同じ。しるしにだけ色を付けています
+        var pre = (x.kind === 'rest') ? '■休み:' : '';
+        d.innerHTML = pre + x.items.map(function (it) {
+          return (it.mark ? '<span class="sc">' + esc(it.mark) + '</span>' : '') + esc(it.name);
+        }).join('<span class="sep">・</span>');
+      } else {
+        d.textContent = x.text;
+      }
+      box.appendChild(d);
+    });
+    b.appendChild(box);
+
+    // コピー
+    var wrap = el('div', 'copywrap', '');
+    var cb = document.createElement('button');
+    cb.className = 'copybtn';
+    cb.textContent = '📋 この文をコピーしてLINEへ';
+    cb.addEventListener('click', function () { copyLine(text, b); });
+    wrap.appendChild(cb);
+    b.appendChild(wrap);
+
+    // その日の人数(目安として出しておきます)
+    var st = YY.computeDay(S.week, S.pickDate);
+    b.appendChild(el('div', 'legend',
+      '<span style="color:var(--usu)">配置ずみ ' + st.placedCount + '名</span>' +
+      '<span style="color:var(--ki)">🟡 余 ' + st.free.length + '名</span>' +
+      (st.dup.length ? '<span style="color:var(--aka)">⚠ 重複 ' + st.dup.length + '件</span>' : '') +
+      (st.rest.length ? '<span style="color:var(--usu)">休み ' + st.rest.length + '名</span>' : '')));
+  }
+
+  /**
+   * クリップボードへ。使えない環境では textarea を出して
+   * 手で選べるようにします(古い端末や http のときに起きます)。
+   */
+  function copyLine(text, b) {
+    var done = function () { toast('✅ コピーしました。LINEに貼ってください'); };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(function () { fallback(); });
+    } else {
+      fallback();
+    }
+
+    function fallback() {
+      // まず昔ながらの方法を試します
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      var okd = false;
+      try { okd = document.execCommand('copy'); } catch (e) { okd = false; }
+      document.body.removeChild(ta);
+      if (okd) { done(); return; }
+
+      // それも駄目なら、選んでコピーしてもらう欄を出します
+      if (b.querySelector('.copyfall')) return;
+      var box = el('div', 'copyfall',
+        '<div class="t">この端末では自動でコピーできません。下の文をおしてから、長おし→コピーしてください</div>');
+      var t2 = document.createElement('textarea');
+      t2.value = text;
+      t2.readOnly = true;
+      t2.addEventListener('focus', function () { t2.select(); });
+      box.appendChild(t2);
+      b.appendChild(box);
+      t2.focus(); t2.select();
+    }
+  }
+
+  /* =================================================================
+     画面「メンバー」= 名簿の管理
+     ================================================================= */
+  var memQ = '', memBulk = false, memBulkKubun = '自社';
+
+  function renderMembers(b) {
+    if (memBulk) { renderBulk(b); return; }
+
+    var bar = el('div', 'setbar', '');
+    var inp = document.createElement('input');
+    inp.placeholder = '名前・所属でさがす';
+    inp.value = memQ;
+    inp.addEventListener('input', function () { memQ = inp.value; draw(); });
+    bar.appendChild(inp);
+
+    var row = el('div', 'row', '');
+    var add = document.createElement('button');
+    add.className = 'toggle add';
+    add.textContent = '＋ メンバーを追加';
+    add.addEventListener('click', function () {
+      if (!S.online) { toast('電波が届いていません'); return; }
+      openMemberPop(null, add);
+    });
+    row.appendChild(add);
+
+    var bulk = document.createElement('button');
+    bulk.className = 'toggle';
+    bulk.textContent = '📋 まとめて追加';
+    bulk.addEventListener('click', function () { memBulk = true; render(); });
+    row.appendChild(bulk);
+
+    var ws = YY.master.workers;
+    row.appendChild(el('div', 'cnt',
+      ws.length + '名' + (ws.filter(function (w) { return !w.active; }).length
+        ? '(隠し ' + ws.filter(function (w) { return !w.active; }).length + ')' : '')));
+    bar.appendChild(row);
+    b.appendChild(bar);
+
+    var list = el('div', 'wlist', '');
+    b.appendChild(list);
+
+    function draw() {
+      list.innerHTML = '';
+      var q = memQ.trim();
+      var hit = ws.filter(function (w) {
+        if (!q) return true;
+        return w.name.indexOf(q) >= 0 || (w.shozoku || '').indexOf(q) >= 0;
+      });
+      if (!ws.length) {
+        list.innerHTML = '<div class="soon" style="grid-column:1/-1">' +
+          '<div class="e">👥</div>まだ誰も登録されていません<br>' +
+          '<span style="font-size:14px">「まとめて追加」で名前を貼り付けると早いです</span></div>';
+        return;
+      }
+      if (!hit.length) {
+        list.innerHTML = '<div class="soon" style="grid-column:1/-1">見つかりませんでした</div>';
+        return;
+      }
+      hit.forEach(function (w, i) {
+        var r = document.createElement('button');
+        r.className = 'wrow' + (w.active ? '' : ' off');
+        r.setAttribute('data-member', w.id);
+        r.innerHTML = '<div class="ord">' + (ws.indexOf(w) + 1) + '</div><div>' +
+          '<div class="nm2' + (w.coop ? ' coop' : '') + '">' + esc(w.name) + '</div>' +
+          '<div class="sub">' + esc(w.kubun) + (w.shozoku ? '・' + esc(w.shozoku) : '') + '</div>' +
+          '</div>' + (w.active ? '' : '<div class="tag">隠し中</div>');
+        r.addEventListener('click', function (e) {
+          e.stopPropagation();
+          if (!S.online) { toast('電波が届いていません'); return; }
+          openMemberPop(w.id, r);
+        });
+        list.appendChild(r);
+      });
+    }
+    draw();
+  }
+
+  /* --- まとめて追加 --------------------------------------------------- */
+
+  function renderBulk(b) {
+    var box = el('div', 'bulk', '');
+    box.appendChild(el('div', 'ex',
+      '1行に1人ずつ入れてください。次のどちらでも通ります。<br>' +
+      '<b>松高</b> … 名前だけ(区分は下で選んだもの)<br>' +
+      '<b>松高,自社,よつば建設</b> … 名前,区分,所属<br>' +
+      'カンマ・読点・タブのどれでも区切れます。すでにいる名前は飛ばします'));
+
+    var row = el('div', 'row', '<span class="lb">名前だけの行の区分</span>');
+    YY.KUBUN.forEach(function (k) {
+      var t = document.createElement('button');
+      t.className = 'toggle' + (memBulkKubun === k ? ' on' : '');
+      t.textContent = k;
+      t.addEventListener('click', function () {
+        memBulkKubun = k;
+        Array.prototype.forEach.call(row.querySelectorAll('button'), function (x) {
+          x.className = 'toggle' + (x === t ? ' on' : '');
+        });
+      });
+      row.appendChild(t);
+    });
+    box.appendChild(row);
+
+    var ta = document.createElement('textarea');
+    ta.placeholder = '松高\n松平\n井谷,自社,よつば建設\n二神,協力,MK興業';
+    box.appendChild(ta);
+
+    var btns = el('div', 'btns', '');
+    var no = document.createElement('button');
+    no.textContent = 'やめる';
+    no.addEventListener('click', function () { memBulk = false; render(); });
+    var ok = document.createElement('button');
+    ok.className = 'ok'; ok.textContent = '追加する';
+    ok.addEventListener('click', function () {
+      var v = ta.value;
+      if (!v.trim()) { toast('名前を入れてください'); return; }
+      ok.disabled = true;
+      YY.addMembersBulk(v, memBulkKubun).then(function (res) {
+        memBulk = false;
+        render();
+        toast(res.added.length + '名を追加しました' +
+          (res.skipped.length ? '(' + res.skipped.length + '名はすでにいます)' : ''));
+      }).catch(function (e) {
+        ok.disabled = false;
+        toast('追加できませんでした:' + (e && e.message ? e.message : ''));
+      });
+    });
+    btns.appendChild(no); btns.appendChild(ok);
+    box.appendChild(btns);
+    b.appendChild(box);
+    setTimeout(function () { ta.focus(); }, 0);
+  }
+
+  /* --- メンバーの追加・編集の吹き出し --------------------------------- */
+
+  function openMemberPop(memberId, anchorEl) {
+    var isNew = !memberId;
+    var w = isNew ? null : YY.master.workers.filter(function (x) { return x.id === memberId; })[0];
+    if (!isNew && !w) { toast('そのメンバーが見つかりません'); return; }
+
+    S.memPop = { id: memberId, anchor: anchorEl };
+    var kubun = isNew ? '自社' : w.kubun;
+
+    var pop = $('jobpop');           // 同じ吹き出しの見た目を使います
+    pop.innerHTML = '';
+    pop.appendChild(el('div', 'arrow', ''));
+
+    var inr = el('div', 'in', '');
+    inr.appendChild(el('div', 'ttl', isNew ? 'メンバーの追加' : 'メンバーの編集'));
+    inr.appendChild(el('hr', '', ''));
+
+    var f1 = el('div', 'fld', '<div class="lb">名前</div>');
+    var inName = document.createElement('input');
+    inName.type = 'text';
+    inName.maxLength = YY.MEMBER_NAME_MAX;
+    inName.value = isNew ? '' : w.name;
+    inName.placeholder = '例:松高';
+    f1.appendChild(inName);
+    inr.appendChild(f1);
+    if (!isNew) {
+      inr.appendChild(el('div', 'fld',
+        '<div class="lb"></div><div class="note">空にして決定すると、この人を削除します</div>'));
+    }
+
+    var f2 = el('div', 'fld', '<div class="lb">区分</div>');
+    var kbox = el('div', 'cats2', '');
+    YY.KUBUN.forEach(function (k) {
+      var bb = document.createElement('button');
+      bb.textContent = k;
+      bb.className = (kubun === k) ? 'on' : '';
+      bb.addEventListener('click', function () {
+        kubun = k;
+        Array.prototype.forEach.call(kbox.children, function (x) {
+          x.className = (x === bb) ? 'on' : '';
+        });
+      });
+      kbox.appendChild(bb);
+    });
+    f2.appendChild(kbox);
+    inr.appendChild(f2);
+    inr.appendChild(el('div', 'fld',
+      '<div class="lb"></div><div class="note">「協力」にすると予定表で青文字になります</div>'));
+
+    var f3 = el('div', 'fld', '<div class="lb">所属<small>(任意)</small></div>');
+    var inSho = document.createElement('input');
+    inSho.type = 'text';
+    inSho.className = 'sub';
+    inSho.maxLength = 30;
+    inSho.value = isNew ? '' : (w.shozoku || '');
+    inSho.placeholder = '例:よつば建設 / 光工業';
+    f3.appendChild(inSho);
+    inr.appendChild(f3);
+
+    if (!isNew) {
+      inr.appendChild(el('hr', '', ''));
+      var idx = YY.master.workers.indexOf(w);
+      var tools = el('div', 'tools', '');
+      var up = document.createElement('button');
+      up.innerHTML = '↑ 上へ'; up.disabled = idx <= 0;
+      up.addEventListener('click', function () { doMoveMember(memberId, -1); });
+      var dn = document.createElement('button');
+      dn.innerHTML = '↓ 下へ'; dn.disabled = idx >= YY.master.workers.length - 1;
+      dn.addEventListener('click', function () { doMoveMember(memberId, 1); });
+      var hide = document.createElement('button');
+      hide.className = 'hide' + (w.active ? '' : ' on');
+      hide.textContent = w.active ? '選択肢から隠す' : '選択肢に出す';
+      hide.addEventListener('click', function () {
+        YY.setMemberActive(memberId, !w.active).then(function () {
+          toast(w.active ? '選択肢から隠しました' : '選択肢に出しました');
+          closeJobPop();
+        }).catch(function (e) { toast('切り替えできませんでした:' + e.message); });
+      });
+      tools.appendChild(up); tools.appendChild(dn); tools.appendChild(hide);
+      inr.appendChild(tools);
+      inr.appendChild(el('div', 'note',
+        '隠しても、すでに入っている予定はそのまま残ります。データは消えません'));
+    }
+
+    var err = el('div', 'err', '');
+    err.style.display = 'none';
+    inr.appendChild(err);
+
+    inr.appendChild(el('hr', '', ''));
+    var btns = el('div', 'btns', '');
+    var bNo = document.createElement('button');
+    bNo.textContent = 'やめる';
+    bNo.addEventListener('click', closeJobPop);
+    var bOk = document.createElement('button');
+    bOk.className = 'ok'; bOk.textContent = '決定';
+    bOk.addEventListener('click', submit);
+    btns.appendChild(bNo); btns.appendChild(bOk);
+    inr.appendChild(btns);
+    pop.appendChild(inr);
+
+    function submit() {
+      var nm = (inName.value || '').trim();
+      if (!nm) {
+        if (isNew) {
+          err.textContent = '名前を入れてください';
+          err.style.display = '';
+          inName.focus();
+          return;
+        }
+        removeMember(memberId, w.name);
+        return;
+      }
+      var sho = (inSho.value || '').trim();
+      closeJobPop();
+      if (isNew) {
+        YY.addMember(nm, kubun, sho).then(function () {
+          toast('「' + nm + '」を追加しました');
+        }).catch(function (e) { toast('追加できませんでした:' + e.message); });
+      } else {
+        YY.updateMember(memberId, { name: nm, kubun: kubun, shozoku: sho }).then(function () {
+          toast('直しました');
+        }).catch(function (e) { toast('直せませんでした:' + e.message); });
+      }
+    }
+
+    [inName, inSho].forEach(function (x) {
+      x.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); submit(); }
+        if (e.key === 'Escape') { e.preventDefault(); closeJobPop(); }
+      });
+    });
+
+    S.editJob = '__member__';
+    $('popmask').classList.add('on');
+    pop.classList.add('on');
+    positionJobPop();
+    inName.focus();
+    inName.setSelectionRange(inName.value.length, inName.value.length);
+  }
+
+  function doMoveMember(memberId, dir) {
+    YY.moveMember(memberId, dir).then(function (moved) {
+      if (moved) toast(dir < 0 ? '上へ動かしました' : '下へ動かしました');
+      closeJobPop();
+    }).catch(function (e) { toast('動かせませんでした:' + e.message); });
+  }
+
+  /** 工事と同じ操作。予定に入っている分も一緒に消えることを伝えます */
+  function removeMember(memberId, name) {
+    YY.memberUsage(name).then(function (u) {
+      var msg = u.cells
+        ? '「' + name + '」は予定に ' + u.cells + 'マス 入っています。\n' +
+          '削除すると、その予定からも消えます。\n' +
+          '記録を残したい場合は「選択肢から隠す」を使ってください。\n\n' +
+          '本当に削除しますか?'
+        : '「' + name + '」を削除しますか?';
+      if (!confirm(msg)) return;
+
+      closeJobPop();
+      YY.deleteMember(memberId, name).then(function (res) {
+        toast('「' + name + '」を削除しました' +
+          (res.cells ? '(予定 ' + res.cells + 'マスからも消しました)' : ''));
+      }).catch(function (e) {
+        toast('削除できませんでした:' + (e && e.message ? e.message : ''));
+      });
+    }).catch(function (e) {
+      toast('調べられませんでした:' + (e && e.message ? e.message : ''));
+    });
+  }
+
+  /* =================================================================
+     PC版ツールバー
+     ================================================================= */
+
+  /** セルの中身を1つの文字列に。「◎松平・井谷・本山(3名)」 */
+  function cellText(jobKey, dateKey) {
+    var c = YY.displayCell(S.week, jobKey, dateKey);
+    if (!c.count) return '';
+    var names = c.rows.map(YY.nameWithMarks).concat(c.extras).join('・');
+    return names + '(' + c.count + '名)';
+  }
+
+  /** 画面に出ているとおりの表を、行の配列にします */
+  function gridRows() {
+    var days = YY.weekDates(S.monday);
+    var head = ['工事'];
+    days.forEach(function (d, i) {
+      var dt = YY.parseKey(d);
+      head.push(YY.DOW[i] + ' ' + (dt.getMonth() + 1) + '/' + dt.getDate());
+    });
+    var rows = [head];
+
+    // 休み行
+    var rest = ['休み'];
+    days.forEach(function (d) { rest.push(cellText(YY.REST_KEY, d)); });
+    rows.push(rest);
+
+    // 余 行(計算で出しているぶん)
+    var yo = ['🟡 余'];
+    days.forEach(function (d) {
+      var free = YY.computeDay(S.week, d).free;
+      yo.push(free.length ? free.join('・') + '(' + free.length + '名)' : '');
+    });
+    rows.push(yo);
+
+    // 工事(いま選んでいるカテゴリのとおり)
+    var used = usedJobIds();
+    var cats = (S.cat === 'all') ? YY.CATEGORIES.order : [S.cat];
+    cats.forEach(function (cat) {
+      var jobs = YY.jobsByCat(cat, used);
+      if (!jobs.length) return;
+      if (S.cat === 'all') rows.push([YY.CATEGORIES.labels[cat]]);
+      jobs.forEach(function (j) {
+        var r = [j.name + (j.no ? '(' + j.no + ')' : '')];
+        days.forEach(function (d) { r.push(cellText(j.id, d)); });
+        rows.push(r);
+      });
+    });
+    return rows;
+  }
+
+  function exportExcel() {
+    var lb = YY.weekLabel(S.monday);
+    var rows = gridRows();
+    var name = 'よつば_週間予定_' + S.monday + '_' + lb.range.replace('〜', '-');
+
+    if (typeof XLSX === 'undefined') {
+      var csv = rows.map(function (r) {
+        return r.map(function (c) {
+          var s = String(c == null ? '' : c);
+          return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+        }).join(',');
+      }).join('\r\n');
+      download(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }), name + '.csv');
+      toast('Excelの部品を読み込めなかったので、CSVで書き出しました');
+      return;
+    }
+
+    var ws = XLSX.utils.aoa_to_sheet(rows);
+    var w = [{ wch: 30 }];
+    for (var i = 0; i < 7; i++) w.push({ wch: 24 });
+    ws['!cols'] = w;
+    ws['!freeze'] = { xSplit: 1, ySplit: 1 };
+
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, lb.range.replace(/\//g, '.'));
+    XLSX.writeFile(wb, name + '.xlsx');
+    toast('Excelに書き出しました');
+  }
+
+  function download(blob, filename) {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+
+  /* --- LINE用にコピー(曜日を選んでから) --------------------------- */
+
+  function openDayPop(anchor) {
+    var pop = $('daypop');
+    pop.innerHTML = '';
+    pop.appendChild(el('div', 'arrow', ''));
+
+    var inr = el('div', 'in', '<div class="ttl2">どの日をコピーしますか?</div>');
+    var row = el('div', 'row2', '');
+    YY.weekDates(S.monday).forEach(function (d, i) {
+      var dt = YY.parseKey(d);
+      var st = YY.computeDay(S.week, d);
+      var b = document.createElement('button');
+      if (YY.isToday(d)) b.className = 'today';
+      b.innerHTML = '<span class="w">' + YY.DOW[i] + '</span>' +
+        '<span class="d">' + (dt.getMonth() + 1) + '/' + dt.getDate() + '</span>' +
+        '<span class="n2">' + (st.placedCount ? st.placedCount + '名' : '—') + '</span>';
+      b.addEventListener('click', function () { copyDay(d); });
+      row.appendChild(b);
+    });
+    inr.appendChild(row);
+    inr.appendChild(el('div', 'hint3', '配信タブと同じ文面をコピーします'));
+    pop.appendChild(inr);
+
+    $('daymask').classList.add('on');
+    pop.classList.add('on');
+
+    var a = anchor.getBoundingClientRect();
+    var pw = pop.offsetWidth, pad = 12;
+    pop.style.top = (a.bottom + 8) + 'px';
+    var left = Math.min(a.left, window.innerWidth - pw - pad);
+    pop.style.left = Math.max(pad, left) + 'px';
+    var ar = pop.querySelector('.arrow');
+    if (ar) {
+      var cx = a.left + a.width / 2 - Math.max(pad, left) - 6;
+      ar.style.left = Math.max(12, Math.min(pw - 24, cx)) + 'px';
+    }
+  }
+
+  function closeDayPop() {
+    $('daypop').classList.remove('on');
+    $('daymask').classList.remove('on');
+  }
+
+  function copyDay(dateKey) {
+    var text = YY.lineText(S.week, dateKey);
+    var lbl = YY.dayLabel(dateKey);
+
+    var done = function () {
+      closeDayPop();
+      toast('✅ ' + lbl + 'をコピーしました。LINEに貼ってください');
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(fallback);
+    } else {
+      fallback();
+    }
+
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      var okd = false;
+      try { okd = document.execCommand('copy'); } catch (e) { okd = false; }
+      document.body.removeChild(ta);
+      if (okd) { done(); return; }
+
+      // 自動でコピーできない端末では、配信タブを開いて手で取れるようにします
+      closeDayPop();
+      S.pickDate = dateKey;
+      S.tab = 'line';
+      Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function (x) {
+        x.classList.toggle('on', x.getAttribute('data-tab') === 'line');
+      });
+      render();
+      toast('この端末では自動でコピーできません。配信タブを開きました');
+    }
+  }
+
+  /* =================================================================
+     小道具
+     ================================================================= */
+  function el(tag, cls, html) {
+    var d = document.createElement(tag);
+    if (cls) d.className = cls;
+    if (html != null) d.innerHTML = html;
+    return d;
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>

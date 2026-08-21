@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1c4b34">
+<title>よつば週間予定</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;600;700;900&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+<style>
+/* =====================================================================
+   確認用アプリ|見るだけ。編集の見た目も、書きこむコードもありません
+   スマホで見る前提。文字とタップ領域を大きめにしています
+   ===================================================================== */
+:root{
+  --midori:#1c4b34;
+  --kinari:#f5f1e8;
+  --ji:#e8e4d8;
+  --moji:#2b2a26;
+  --usu:#8a877c;
+  --usu2:#6b675c;
+  --keisen:#d9d3c4;
+  --keisen2:#e6e1d3;
+  --kyoryoku:#4a7c9b;
+  --shokucho:#3fae6a;
+  --aka:#b3402e;
+  --ki:#b07d1e;
+  --kiji:#fdf3dd;
+  --kiwaku:#ecd9ac;
+  --yasumi:#eceae2;
+  --kyo:#eef3ee;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--kinari);font-family:'Noto Sans JP',sans-serif;color:var(--moji);
+  font-size:16px;word-break:keep-all;-webkit-text-size-adjust:100%;
+}
+button{font-family:inherit;white-space:nowrap;cursor:pointer}
+input{font-family:inherit}
+
+#app{display:flex;flex-direction:column;min-height:100vh}
+
+/* ---- 上部 ---- */
+.head{
+  background:var(--midori);color:#fff;padding:14px 16px 12px;
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+}
+.head .t{font-size:17px;font-weight:700}
+.head .chg{
+  min-height:40px;padding:0 14px;border-radius:20px;
+  border:1px solid rgba(255,255,255,.5);background:transparent;color:#fff;
+  font-size:14px;font-weight:700;
+}
+.obi{padding:10px 14px;font-size:15px;font-weight:700;text-align:center;display:none}
+.obi.on{display:block}
+.obi.offline{background:#4a4844;color:#fff}
+
+/* ---- 週ナビ ---- */
+.weeknav{
+  display:flex;align-items:center;gap:8px;padding:10px 12px;
+  background:#fff;border-bottom:1px solid var(--keisen);
+}
+.weeknav button{
+  min-width:52px;min-height:48px;border:1px solid var(--keisen);background:#fff;
+  border-radius:10px;font-size:20px;color:var(--midori);font-weight:700;flex-shrink:0;
+}
+.weeknav button.now{min-width:0;padding:0 14px;border-color:var(--midori);font-size:16px}
+.weeknav .lbl{flex:1;text-align:center;line-height:1.2}
+.weeknav .lbl b{font-size:18px;font-weight:900;display:block}
+.weeknav .lbl span{font-size:13px;color:var(--usu)}
+
+/* ---- 名前の帯 ---- */
+.mebar{
+  padding:12px 14px;background:#fff;border-bottom:1px solid var(--keisen);
+  display:flex;align-items:center;gap:10px;
+}
+.mebar .nm{font-size:21px;font-weight:900}
+.mebar .nm.coop{color:var(--kyoryoku)}
+
+/* ---- じぶんのカード ---- */
+.days{display:flex;flex-direction:column;gap:10px;padding:14px 12px}
+.daycard{
+  background:#fff;border:1px solid var(--keisen);border-radius:12px;
+  padding:14px 16px;position:relative;
+}
+.daycard .top{display:flex;align-items:center;gap:14px}
+.daycard .dw{width:60px;flex-shrink:0;text-align:center;line-height:1.2}
+.daycard .dw .w{font-size:17px;font-weight:700}
+.daycard .dw .d{font-size:14px;color:var(--usu)}
+.daycard .dw .w.sat{color:var(--kyoryoku)}
+.daycard .dw .w.sun{color:var(--aka)}
+.daycard .jobs{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.daycard .j{font-size:20px;font-weight:900;line-height:1.35;word-break:break-all}
+.daycard .j .mk{color:var(--shokucho);font-weight:900;margin-right:2px;font-size:.85em}
+.daycard .j .no{font-size:13px;color:var(--usu);font-weight:400;margin-left:6px}
+.daycard.today{border:3px solid var(--midori)}
+.daycard.today .badge{
+  position:absolute;top:-11px;left:14px;background:var(--midori);color:#fff;
+  border-radius:10px;padding:2px 12px;font-size:13px;font-weight:900;
+}
+.daycard.today .dw .w,.daycard.today .dw .d{color:var(--midori);font-weight:900}
+.daycard.rest{background:var(--yasumi)}
+.daycard.rest .j{color:var(--usu)}
+.daycard .mitei{font-size:17px;font-weight:400;color:#b9b3a2}
+/* 一緒に行く人 */
+.daycard .more{
+  margin-top:10px;width:100%;min-height:48px;border-radius:10px;
+  border:1px solid var(--keisen);background:var(--kinari);
+  color:var(--midori);font-size:15px;font-weight:700;
+}
+.daycard .more.open{background:var(--kyo);border-color:var(--midori)}
+.mates{margin-top:10px;display:flex;flex-direction:column;gap:10px}
+.mates .grp{background:var(--kinari);border:1px solid var(--keisen2);border-radius:10px;padding:10px 12px}
+.mates .gt{font-size:13px;font-weight:700;color:var(--usu2);margin-bottom:6px}
+.mates .names{font-size:17px;font-weight:600;line-height:1.9;word-break:break-all}
+.mates .cnt{font-size:12px;color:var(--usu);font-weight:400;margin-top:2px}
+
+/* ---- 予定表(全体) ---- */
+.cats{display:flex;gap:8px;padding:10px 12px 6px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.cats::-webkit-scrollbar{display:none}
+.cats button{
+  min-height:48px;padding:0 16px;border-radius:24px;border:1px solid var(--keisen);
+  background:#fff;color:var(--moji);font-size:15px;font-weight:600;flex-shrink:0;
+}
+.cats button.on{background:var(--midori);color:#fff;border-color:var(--midori);font-weight:700}
+.daypills{display:flex;gap:6px;padding:6px 10px 10px}
+.daypills button{
+  flex:1;min-height:58px;border-radius:10px;border:1px solid var(--keisen);
+  background:#fff;line-height:1.2;padding:0;position:relative;
+}
+.daypills button .w{font-size:15px;font-weight:700}
+.daypills button .d{font-size:12px;color:var(--usu)}
+.daypills button.sat .w{color:var(--kyoryoku)}
+.daypills button.sun .w{color:var(--aka)}
+.daypills button.on{background:var(--midori);border-color:var(--midori)}
+.daypills button.on .w{color:#fff;font-weight:900}
+.daypills button.on .d{color:#fff;opacity:.85}
+.daypills button.on.sat .w,.daypills button.on.sun .w{color:#fff}
+.daypills button.today::after{
+  content:'';position:absolute;bottom:5px;left:50%;transform:translateX(-50%);
+  width:16px;height:3px;border-radius:2px;background:var(--midori);
+}
+.daypills button.on.today::after{background:#fff}
+
+.plan{display:flex;flex-direction:column;gap:10px;padding:2px 12px 14px}
+.cathd2{font-size:13px;font-weight:900;color:var(--midori);padding:6px 2px 0}
+.jobcard{background:#fff;border:1px solid var(--keisen);border-radius:12px;padding:12px 14px}
+.jobcard .jn{font-size:18px;font-weight:900;line-height:1.35;word-break:break-all}
+.jobcard .jno{font-size:12px;color:var(--usu);margin-top:1px}
+.jobcard .names{font-size:17px;font-weight:600;line-height:1.9;margin-top:8px;word-break:break-all}
+.jobcard .cnt{font-size:12px;color:var(--usu);font-weight:400;margin-top:2px}
+.jobcard.mine{border:2px solid var(--midori);background:var(--kyo)}
+.jobcard .youtag{
+  display:inline-block;background:var(--midori);color:#fff;border-radius:10px;
+  padding:1px 10px;font-size:12px;font-weight:900;margin-left:6px;vertical-align:2px;
+}
+.jobcard.rest2{background:var(--yasumi)}
+.jobcard.rest2 .jn{color:var(--usu2);font-size:16px}
+/* まだ人が決まっていない工事。大きさは同じで、文字だけ薄くします */
+.jobcard .names.mitei2{color:#b9b3a2;font-weight:400}
+.nm{white-space:nowrap}
+.nm.coop{color:var(--kyoryoku)}
+.nm.me{background:#fff6b8;border-radius:4px;padding:0 3px;font-weight:900}
+.sc{color:var(--shokucho);font-weight:900;margin-right:1px;font-size:.85em}
+.sep{color:#c2bcab;font-weight:400}
+.nodata{padding:40px 16px;text-align:center;color:var(--usu);font-size:15px;line-height:1.9}
+
+/* ---- 名前を選ぶ ---- */
+.pick{padding:16px 12px 24px}
+.pick .lead{font-size:17px;font-weight:700;text-align:center;margin-bottom:6px}
+.pick .sub{font-size:14px;color:var(--usu);text-align:center;margin-bottom:14px}
+.pick input{
+  width:100%;min-height:52px;border:1px solid var(--keisen);border-radius:12px;
+  padding:0 14px;font-size:17px;background:#fff;margin-bottom:12px;
+}
+.pick .list{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.pick .list button{
+  min-height:60px;border:1px solid var(--keisen);background:#fff;border-radius:12px;
+  font-size:19px;font-weight:700;padding:8px 10px;line-height:1.3;
+}
+.pick .list button.coop{color:var(--kyoryoku)}
+.pick .list button .s{display:block;font-size:12px;color:var(--usu);font-weight:600}
+.pick .none{padding:30px 10px;text-align:center;color:var(--usu);font-size:15px}
+
+/* ---- 下タブ ---- */
+.tabs{
+  margin-top:auto;display:grid;grid-template-columns:repeat(2,1fr);
+  background:#fff;border-top:1px solid var(--keisen);
+  padding:6px 4px calc(10px + env(safe-area-inset-bottom));position:sticky;bottom:0;z-index:20;
+}
+.tabs button{border:none;background:none;text-align:center;padding:8px 0;color:var(--usu);min-height:56px}
+.tabs button .i{font-size:22px}
+.tabs button .l{font-size:13px;font-weight:600}
+.tabs button.on{color:var(--midori)}
+.tabs button.on .l{font-weight:900}
+
+/* ---- 大きい画面では中央に寄せます ---- */
+@media (min-width:700px){
+  #app{max-width:600px;margin:0 auto;border-left:1px solid var(--keisen);border-right:1px solid var(--keisen)}
+  .pick .list{grid-template-columns:repeat(3,1fr)}
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div class="head">
+    <div class="t" id="headTitle">👤 じぶん</div>
+    <button class="chg" id="btnChange" style="display:none">なまえを変える</button>
+  </div>
+
+  <div class="obi offline" id="obiOffline">電波が届いていません</div>
+
+  <div id="body"></div>
+
+  <div class="tabs" id="tabs">
+    <button data-tab="me" class="on"><div class="i">👤</div><div class="l">じぶん</div></button>
+    <button data-tab="plan"><div class="i">📅</div><div class="l">予定表</div></button>
+  </div>
+</div>
+
+<script src="common.js"></script>
+<script>
+/* =====================================================================
+   確認用アプリ。
+   ★ このファイルには予定を書きこむコードがありません。
+      common.js の saveCell / addJob / addMember などは一切呼びません。
+      読むのは subscribeWeek / subscribeJobs / subscribeMembers だけです。
+   ===================================================================== */
+(function () {
+  'use strict';
+
+  var ME_KEY = 'yotsuba-yotei-me';    // 選んだ名前を端末におぼえます
+
+  var S = {
+    tab: 'me',
+    monday: YY.thisMonday(),
+    week: { assign: {} },
+    me: null,
+    picking: false,
+    pickQ: '',
+    openMates: {},      // じぶん画面で「一緒に行く人」を開いている日
+    cat: 'all',         // 予定表のカテゴリ
+    pickDate: null,     // 予定表で見ている日
+    online: true,
+    unsubWeek: null
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+    });
+  };
+  function el(tag, cls, html) {
+    var d = document.createElement(tag);
+    if (cls) d.className = cls;
+    if (html != null) d.innerHTML = html;
+    return d;
+  }
+
+  /* =================================================================
+     起動
+     ================================================================= */
+  function boot() {
+    // ホーム画面のアイコン(編集用と見分けられるよう、生成り地のほう)
+    var icon = YY.iconDataUri(180, true);
+    var l1 = document.createElement('link');
+    l1.rel = 'apple-touch-icon'; l1.href = icon;
+    document.head.appendChild(l1);
+    var l2 = document.createElement('link');
+    l2.rel = 'icon'; l2.href = YY.iconDataUri(64, true);
+    document.head.appendChild(l2);
+    var mf = {
+      name: 'よつば週間予定', short_name: 'よつば予定',
+      display: 'standalone', background_color: '#f5f1e8', theme_color: '#1c4b34',
+      icons: [{ src: icon, sizes: '180x180', type: 'image/svg+xml' }]
+    };
+    var l3 = document.createElement('link');
+    l3.rel = 'manifest';
+    l3.href = URL.createObjectURL(new Blob([JSON.stringify(mf)], { type: 'application/json' }));
+    document.head.appendChild(l3);
+
+    YY.init();
+
+    try { S.me = localStorage.getItem(ME_KEY) || null; } catch (e) { S.me = null; }
+
+    YY.onConnection(function (on) {
+      S.online = on;
+      $('obiOffline').classList.toggle('on', !on);
+    });
+
+    // 読むだけ。事務所が直したら、この画面もすぐ変わります
+    YY.subscribeJobs(function () { render(); });
+    YY.subscribeMembers(function () { render(); });
+    watchWeek();
+
+    Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function (b) {
+      b.addEventListener('click', function () {
+        S.tab = b.getAttribute('data-tab');
+        S.picking = false;
+        Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function (x) {
+          x.classList.toggle('on', x === b);
+        });
+        render();
+      });
+    });
+
+    $('btnChange').addEventListener('click', function () {
+      S.picking = true; S.pickQ = ''; render();
+    });
+
+    render();
+  }
+
+  function watchWeek() {
+    if (S.unsubWeek) S.unsubWeek();
+    S.unsubWeek = YY.subscribeWeek(S.monday, function (w) { S.week = w; render(); });
+  }
+
+  function goWeek(n) {
+    S.monday = (n === 0) ? YY.thisMonday() : YY.addWeeks(S.monday, n);
+    S.openMates = {};
+    watchWeek();
+    render();
+  }
+
+  /* =================================================================
+     描き分け
+     ================================================================= */
+  function render() {
+    $('headTitle').textContent = (S.tab === 'me') ? '👤 じぶん' : '📅 予定表';
+    $('btnChange').style.display = (S.tab === 'me' && S.me && !S.picking) ? '' : 'none';
+
+    var b = $('body');
+    b.innerHTML = '';
+    if (S.tab === 'me') {
+      if (!S.me || S.picking) renderPick(b);
+      else renderMe(b);
+    } else {
+      renderPlan(b);
+    }
+  }
+
+  function weekNav() {
+    var lb = YY.weekLabel(S.monday);
+    var w = el('div', 'weeknav',
+      '<button data-w="-1">◀</button>' +
+      '<button class="now" data-w="0">今週</button>' +
+      '<div class="lbl"><b>' + lb.range + '</b><span>' + lb.year + '</span></div>' +
+      '<button data-w="1">▶</button>');
+    Array.prototype.forEach.call(w.querySelectorAll('button'), function (b) {
+      b.addEventListener('click', function () { goWeek(+b.getAttribute('data-w')); });
+    });
+    return w;
+  }
+
+  /** 名前の並び。◎が先頭、あとは選んだ順。自分の名前は目立たせます */
+  function namesHTML(rows, extras) {
+    var out = rows.map(function (r) {
+      var me = (r.name === S.me) ? ' me' : '';
+      return '<span class="nm' + (r.coop ? ' coop' : '') + '">' +
+        (r.mark ? '<span class="sc">' + esc(r.mark) + '</span>' : '') +
+        '<span class="nm' + me + '">' + esc(r.name) + '</span></span>';
+    }).concat((extras || []).map(function (x) {
+      return '<span class="nm">' + esc(x) + '</span>';
+    }));
+    return out.join('<span class="sep">・</span>');
+  }
+
+  /* =================================================================
+     名前を選ぶ(初回と「なまえを変える」)
+     ================================================================= */
+  function renderPick(b) {
+    var box = el('div', 'pick', '');
+    box.appendChild(el('div', 'lead', S.me ? 'なまえを選びなおしてください' : 'あなたの なまえを えらんでください'));
+    box.appendChild(el('div', 'sub', 'この端末におぼえます。あとから変えられます'));
+
+    var inp = document.createElement('input');
+    inp.type = 'text';
+    inp.placeholder = '名前でさがす';
+    inp.value = S.pickQ;
+    inp.addEventListener('input', function () { S.pickQ = inp.value; draw(); });
+    box.appendChild(inp);
+
+    var list = el('div', 'list', '');
+    box.appendChild(list);
+    b.appendChild(box);
+
+    function draw() {
+      list.innerHTML = '';
+      var q = S.pickQ.trim();
+      var ws = YY.master.workers.filter(function (w) {
+        if (!w.active) return false;
+        if (!q) return true;
+        return w.name.indexOf(q) >= 0 || (w.shozoku || '').indexOf(q) >= 0;
+      });
+      if (!YY.master.workers.length) {
+        list.innerHTML = '<div class="none" style="grid-column:1/-1">' +
+          '名簿がまだ登録されていません<br>事務所にお問い合わせください</div>';
+        return;
+      }
+      if (!ws.length) {
+        list.innerHTML = '<div class="none" style="grid-column:1/-1">見つかりませんでした</div>';
+        return;
+      }
+      ws.forEach(function (w) {
+        var bt = document.createElement('button');
+        bt.className = w.coop ? 'coop' : '';
+        bt.innerHTML = esc(w.name) + (w.shozoku ? '<span class="s">' + esc(w.shozoku) + '</span>' : '');
+        bt.addEventListener('click', function () {
+          S.me = w.name;
+          try { localStorage.setItem(ME_KEY, w.name); } catch (e) { }
+          S.picking = false;
+          render();
+        });
+        list.appendChild(bt);
+      });
+    }
+    draw();
+  }
+
+  /* =================================================================
+     画面1「じぶん」
+     ================================================================= */
+
+  /** その人のその日。休みかどうかと、入っている工事(複数可) */
+  function myDay(dateKey) {
+    var day = YY.computeDay(S.week, dateKey);
+    var where = day.placements[S.me] || [];
+    var rest = where.indexOf(YY.REST_KEY) >= 0;
+    var jobs = where.filter(function (k) { return k !== YY.REST_KEY; }).map(function (k) {
+      var lab = YY.jobLabel(k);
+      var c = YY.cellOf(S.week, k, dateKey);
+      return { id: k, name: lab.name, no: lab.sub, mark: (c.members[S.me] || {}).mark || '' };
+    });
+    return { rest: rest, jobs: jobs };
+  }
+
+  function renderMe(b) {
+    b.appendChild(weekNav());
+
+    var w = YY.master.workerByName[S.me];
+    b.appendChild(el('div', 'mebar',
+      '<div class="nm' + (w && w.coop ? ' coop' : '') + '">' + esc(S.me) + ' さん</div>'));
+
+    var days = YY.weekDates(S.monday);
+    var box = el('div', 'days', '');
+
+    days.forEach(function (d, i) {
+      var m = myDay(d);
+      var today = YY.isToday(d);
+      var dt = YY.parseKey(d);
+
+      var card = el('div', 'daycard' +
+        (today ? ' today' : '') +
+        (m.rest && !m.jobs.length ? ' rest' : ''), '');
+      if (today) card.appendChild(el('span', 'badge', 'きょう'));
+
+      var top = el('div', 'top', '');
+      top.appendChild(el('div', 'dw',
+        '<div class="w' + (i === 5 ? ' sat' : i === 6 ? ' sun' : '') + '">' + YY.DOW[i] + '</div>' +
+        '<div class="d">' + (dt.getMonth() + 1) + '/' + dt.getDate() + '</div>'));
+
+      var jb = el('div', 'jobs', '');
+      if (m.jobs.length) {
+        // 同じ日に2つ以上入っていれば、全部並べます
+        m.jobs.forEach(function (j) {
+          jb.appendChild(el('div', 'j',
+            (j.mark ? '<span class="mk">' + esc(j.mark) + '</span>' : '') +
+            esc(j.name) + (j.no ? '<span class="no">' + esc(j.no) + '</span>' : '')));
+        });
+        if (m.rest) jb.appendChild(el('div', 'j', '<span style="color:var(--usu)">休み</span>'));
+      } else if (m.rest) {
+        jb.appendChild(el('div', 'j', '休み'));
+      } else {
+        jb.appendChild(el('div', 'mitei', '(まだ決まっていません)'));
+      }
+      top.appendChild(jb);
+      card.appendChild(top);
+
+      /* 一緒に行く人。はじめは畳んでいます */
+      if (m.jobs.length) {
+        var open = !!S.openMates[d];
+        var btn = document.createElement('button');
+        btn.className = 'more' + (open ? ' open' : '');
+        btn.textContent = open ? '一緒に行く人 ▴' : '一緒に行く人 ▾';
+        btn.addEventListener('click', function () {
+          S.openMates[d] = !open;
+          render();
+        });
+        card.appendChild(btn);
+
+        if (open) {
+          var mates = el('div', 'mates', '');
+          m.jobs.forEach(function (j) {
+            var c = YY.displayCell(S.week, j.id, d);
+            var g = el('div', 'grp', '');
+            // 工事が1つだけなら見出しは省きます
+            if (m.jobs.length > 1) g.appendChild(el('div', 'gt', esc(j.name)));
+            g.appendChild(el('div', 'names', namesHTML(c.rows, c.extras)));
+            g.appendChild(el('div', 'cnt', c.count + '名'));
+            mates.appendChild(g);
+          });
+          card.appendChild(mates);
+        }
+      }
+
+      box.appendChild(card);
+    });
+
+    b.appendChild(box);
+
+    if (!YY.master.workerByName[S.me]) {
+      b.appendChild(el('div', 'pick',
+        '<div class="none">「' + esc(S.me) + '」は いまの名簿にありません。<br>' +
+        '「なまえを変える」から選びなおしてください</div>'));
+    }
+  }
+
+  /* =================================================================
+     画面2「予定表」= 全体の予定(見るだけ)
+       スマホでは横に7日並べると読めないので、
+       【日を選んで、その日の工事を縦に並べる】形にしています。
+     ================================================================= */
+  function renderPlan(b) {
+    b.appendChild(weekNav());
+
+    /* カテゴリ */
+    var cats = el('div', 'cats', '');
+    var list = [{ k: 'all', l: 'すべて' }];
+    YY.CATEGORIES.order.forEach(function (n) {
+      list.push({ k: n, l: YY.CATEGORIES.labels[n] });
+    });
+    list.forEach(function (it) {
+      var bt = document.createElement('button');
+      bt.textContent = it.l;
+      if (S.cat === it.k) bt.className = 'on';
+      bt.addEventListener('click', function () { S.cat = it.k; render(); });
+      cats.appendChild(bt);
+    });
+    b.appendChild(cats);
+
+    /* 曜日 */
+    var days = YY.weekDates(S.monday);
+    if (days.indexOf(S.pickDate) < 0) {
+      var t = YY.todayKey();
+      S.pickDate = (days.indexOf(t) >= 0) ? t : days[0];
+    }
+    var pills = el('div', 'daypills', '');
+    days.forEach(function (d, i) {
+      var dt = YY.parseKey(d);
+      var bt = document.createElement('button');
+      bt.className = (d === S.pickDate ? 'on ' : '') +
+        (i === 5 ? 'sat ' : i === 6 ? 'sun ' : '') + (YY.isToday(d) ? 'today' : '');
+      bt.innerHTML = '<div class="w">' + YY.DOW[i] + '</div><div class="d">' + dt.getDate() + '</div>';
+      bt.addEventListener('click', function () { S.pickDate = d; render(); });
+      pills.appendChild(bt);
+    });
+    b.appendChild(pills);
+
+    /* その日の工事。人がいない工事も、同じ形のカードで並べます。
+       並びは編集アプリの工事の順そのまま(人の有無で並べ替えません) */
+    var box = el('div', 'plan', '');
+    var catList = (S.cat === 'all') ? YY.CATEGORIES.order : [S.cat];
+    var shown = 0;
+
+    catList.forEach(function (cat) {
+      var jobs = YY.jobsByCat(cat, usedJobIds());
+      if (!jobs.length) return;
+      if (S.cat === 'all') box.appendChild(el('div', 'cathd2', esc(YY.CATEGORIES.labels[cat])));
+
+      jobs.forEach(function (j) {
+        var c = YY.displayCell(S.week, j.id, S.pickDate);
+        shown++;
+        var mine = !!c.rows.filter(function (r) { return r.name === S.me; }).length;
+        var card = el('div', 'jobcard' + (mine ? ' mine' : ''), '');
+        card.appendChild(el('div', 'jn',
+          esc(j.name) + (mine ? '<span class="youtag">あなた</span>' : '')));
+        if (j.no) card.appendChild(el('div', 'jno', esc(j.no)));
+
+        if (c.count) {
+          card.appendChild(el('div', 'names', namesHTML(c.rows, c.extras)));
+          card.appendChild(el('div', 'cnt', c.count + '名'));
+        } else {
+          card.appendChild(el('div', 'names mitei2', 'まだ決まっていません'));
+          card.appendChild(el('div', 'cnt', '0名'));
+        }
+        box.appendChild(card);
+      });
+    });
+
+    /* 休み */
+    var rc = YY.displayCell(S.week, YY.REST_KEY, S.pickDate);
+    if (rc.count) {
+      var rcard = el('div', 'jobcard rest2', '');
+      rcard.appendChild(el('div', 'jn', '休み'));
+      rcard.appendChild(el('div', 'names', namesHTML(rc.rows, rc.extras)));
+      rcard.appendChild(el('div', 'cnt', rc.count + '名'));
+      box.appendChild(rcard);
+      shown++;
+    }
+
+    if (!shown) {
+      box.appendChild(el('div', 'nodata',
+        YY.master.jobs.length
+          ? 'このカテゴリに工事がありません'
+          : '工事がまだ登録されていません<br>事務所にお問い合わせください'));
+    }
+
+    b.appendChild(box);
+  }
+
+  /** 予定に出てくる工事id(隠した工事でも、人が入っていれば出すため) */
+  function usedJobIds() {
+    var u = {};
+    var a = S.week.assign || {};
+    Object.keys(a).forEach(function (id) {
+      var days = a[id] || {};
+      var has = Object.keys(days).some(function (d) {
+        var c = days[d] || {};
+        return Object.keys(c.members || {}).length > 0 || (c.extras || []).length > 0;
+      });
+      if (has) u[id] = true;
+    });
+    return u;
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>

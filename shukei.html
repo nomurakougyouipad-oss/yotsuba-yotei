@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#1c4b34">
+<title>よつば週間予定|集計</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;600;700;900&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+
+<style>
+/* =====================================================================
+   集計|工事別 × 1〜31日の人工表(編集用・PC向けの別ページ)
+   ===================================================================== */
+:root{
+  --midori:#1c4b34;
+  --kinari:#f5f1e8;
+  --moji:#2b2a26;
+  --usu:#8a877c;
+  --usu2:#6b675c;
+  --keisen:#d9d3c4;
+  --keisen2:#e6e1d3;
+  --aka:#b3402e;
+  --kyo:#eef3ee;
+  --don:#f0eee6;      /* 土日の帯 */
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--kinari);font-family:'Noto Sans JP',sans-serif;color:var(--moji);
+  font-size:16px;word-break:keep-all;-webkit-text-size-adjust:100%;
+}
+button{font-family:inherit;white-space:nowrap;cursor:pointer}
+
+/* ---- 上部 ---- */
+.head{
+  background:var(--midori);color:#fff;padding:8px 16px;
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+}
+.head .t{font-size:16px;font-weight:900}
+.head .sp{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.head button{
+  min-height:38px;padding:0 14px;border-radius:8px;font-size:14px;font-weight:700;
+  border:1px solid rgba(255,255,255,.5);background:transparent;color:#fff;
+}
+.head button.xls{background:#fff;color:var(--midori);border:none;font-weight:900}
+.head a.back{color:#fff;font-size:14px;font-weight:700;text-decoration:none;opacity:.9}
+
+/* ---- 月ナビ ---- */
+.mnav{
+  display:flex;align-items:center;gap:10px;padding:8px 16px;
+  background:#fff;border-bottom:1px solid var(--keisen);flex-wrap:wrap;
+}
+.mnav button{
+  min-width:44px;min-height:38px;border:1px solid var(--keisen);background:#fff;
+  border-radius:8px;font-size:16px;color:var(--midori);font-weight:700;
+}
+.mnav button.now{min-width:0;padding:0 12px;border-color:var(--midori);font-size:14px}
+.mnav .ym{font-size:20px;font-weight:900;min-width:150px;text-align:center}
+.mnav .sum{margin-left:auto;font-size:14px;color:var(--usu2);font-weight:700}
+.mnav .sum b{color:var(--midori);font-size:19px;font-weight:900;margin:0 4px}
+.mnav label{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--usu2);font-weight:700}
+
+.obi{padding:8px 16px;font-size:14px;font-weight:700;text-align:center;display:none}
+.obi.on{display:block}
+.obi.warn{background:#fbe9e5;color:var(--aka)}
+
+/* ---- 表 ---- */
+.wrap{overflow:auto;max-height:calc(100vh - 150px);background:#fff}
+table{border-collapse:separate;border-spacing:0;font-size:13px;width:max-content;min-width:100%}
+th,td{border-right:1px solid var(--keisen2);border-bottom:1px solid var(--keisen2);padding:4px 3px}
+thead th{
+  position:sticky;top:0;z-index:3;background:#fff;
+  border-bottom:2px solid var(--midori);font-weight:700;
+}
+/* 工事名の列は左に固定 */
+th.jn,td.jn{
+  position:sticky;left:0;z-index:2;background:#fff;text-align:left;
+  min-width:210px;max-width:210px;padding:5px 8px;border-right:1px solid var(--keisen);
+}
+thead th.jn{z-index:4}
+td.jn .n{
+  font-weight:700;line-height:1.3;font-size:13px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+  overflow:hidden;word-break:break-all;
+}
+td.jn .no{font-size:10px;color:var(--usu);line-height:1.2}
+th.d{min-width:26px;text-align:center;line-height:1.15;font-size:12px}
+th.d .w{font-size:10px;color:var(--usu);font-weight:400;display:block}
+td.d{text-align:center;font-variant-numeric:tabular-nums}
+td.d.zero{color:#cfc9ba}
+/* 土日の帯 */
+th.we,td.we{background:var(--don)}
+th.we .w{color:var(--usu2)}
+/* きょう */
+th.today{background:var(--kyo);color:var(--midori);font-weight:900}
+/* 右端の月計 */
+th.tot,td.tot{
+  position:sticky;right:0;z-index:2;min-width:56px;text-align:center;
+  background:var(--kyo);border-left:2px solid var(--midori);font-weight:900;color:var(--midori);
+}
+thead th.tot{z-index:4}
+/* 最下部の合計行 */
+tfoot td{
+  position:sticky;bottom:0;z-index:3;background:#f3f1e9;
+  border-top:2px solid var(--midori);font-weight:900;
+}
+tfoot td.jn{z-index:4;background:#f3f1e9;color:var(--midori)}
+tfoot td.tot{z-index:4;background:var(--midori);color:#fff;font-size:15px}
+tbody tr:hover td{background:#fbfaf5}
+tbody tr:hover td.we{background:#eeece2}
+tbody tr:hover td.jn{background:#fbfaf5}
+
+/* ---- 工事ごとの内訳 ---- */
+td.jn{cursor:pointer}
+td.jn:hover .n{text-decoration:underline}
+.dmask{position:fixed;inset:0;background:rgba(43,42,38,.45);z-index:40;display:none}
+.dmask.on{display:block}
+.detail{
+  position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:41;
+  width:760px;max-width:calc(100vw - 32px);max-height:86vh;display:none;
+  flex-direction:column;background:#fff;border-radius:14px;overflow:hidden;
+  box-shadow:0 16px 44px rgba(43,42,38,.35);
+}
+.detail.on{display:flex}
+.detail .dh{background:var(--midori);color:#fff;padding:14px 18px;display:flex;align-items:flex-start;gap:12px}
+.detail .dh .jt{font-size:19px;font-weight:900;line-height:1.35;word-break:break-all}
+.detail .dh .jsub{font-size:12px;opacity:.8;margin-top:2px}
+.detail .dh .x{
+  margin-left:auto;flex-shrink:0;min-width:44px;min-height:40px;border-radius:8px;
+  border:1px solid rgba(255,255,255,.5);background:transparent;color:#fff;font-size:16px;font-weight:700;
+}
+.detail .dtot{
+  padding:12px 18px;background:var(--kyo);border-bottom:1px solid var(--keisen);
+}
+.dline{display:flex;align-items:baseline;gap:10px;font-size:14px;color:var(--usu2);font-weight:700}
+.dline + .dline{margin-top:4px}
+.dline .lb2{width:150px;flex-shrink:0}
+.dline .lb2.sub{padding-left:14px;font-weight:600;color:var(--usu)}
+.dline b{color:var(--midori);font-size:22px;font-weight:900;margin-right:2px}
+.dline.sub b{font-size:17px}
+.dline .rest3{font-weight:400;color:var(--usu)}
+.dterm{font-size:12px;color:var(--usu);margin-top:6px;padding-left:2px}
+.dscope{display:flex;gap:8px;margin-top:10px}
+.dscope button{
+  min-height:40px;padding:0 16px;border-radius:20px;border:1px solid var(--keisen);
+  background:#fff;font-size:14px;font-weight:700;color:var(--moji);
+}
+.dscope button.on{background:var(--midori);color:#fff;border-color:var(--midori)}
+.dscope button:disabled{color:#cfc9ba;cursor:default}
+.detail .db{overflow-y:auto;padding:14px 18px 20px}
+.detail h3{
+  font-size:14px;font-weight:900;color:var(--midori);margin:16px 0 8px;
+  border-bottom:1px solid var(--keisen);padding-bottom:5px;
+}
+.detail h3:first-child{margin-top:0}
+.dday{display:flex;gap:12px;padding:8px 0;border-bottom:1px solid var(--keisen2);align-items:baseline}
+.dday .dt{width:80px;flex-shrink:0;font-size:14px;font-weight:700}
+.dday .dt.we{color:var(--usu)}
+.dday .dn{width:44px;flex-shrink:0;font-size:13px;color:var(--usu);text-align:right}
+.dday .dm{flex:1;font-size:15px;font-weight:600;line-height:1.8;word-break:break-all}
+.dtable{width:100%;border-collapse:collapse;font-size:14px}
+.dtable td{border:none;border-bottom:1px solid var(--keisen2);padding:7px 4px}
+.dtable .pn{font-weight:700;font-size:15px}
+.dtable .pn.coop{color:var(--kyoryoku)}
+.dtable .pn .ex{font-size:11px;color:var(--usu);font-weight:600;margin-left:6px}
+.dtable .pc{width:70px;text-align:right;font-weight:900;color:var(--midori);white-space:nowrap}
+.dtable .pd{color:var(--usu);font-size:12px;line-height:1.6;word-break:break-all}
+.dbar{display:inline-block;height:8px;background:var(--midori);border-radius:4px;vertical-align:1px;margin-right:6px}
+.sc{color:#3fae6a;font-weight:900;margin-right:1px;font-size:.85em}
+.sep{color:#c2bcab;font-weight:400}
+
+.msg{padding:50px 20px;text-align:center;color:var(--usu);font-size:15px;line-height:2}
+.foot{padding:10px 16px 24px;font-size:12px;color:var(--usu);line-height:1.8}
+</style>
+</head>
+<body>
+
+<div class="head">
+  <div class="t">📊 よつば週間予定|集計</div>
+  <div class="sp">
+    <a class="back" href="hensyu.html">← 予定表にもどる</a>
+    <button class="xls" id="btnXls">📥 Excel書き出し</button>
+  </div>
+</div>
+
+<div class="mnav">
+  <button id="prev">◀</button>
+  <button class="now" id="thisM">今月</button>
+  <div class="ym" id="ym">—</div>
+  <button id="next">▶</button>
+  <label><input type="checkbox" id="showAll"> 予定のない工事も出す</label>
+  <div class="sum" id="sum"></div>
+</div>
+
+<div class="obi warn" id="obiWarn"></div>
+
+<div id="body"><div class="msg">読み込んでいます…</div></div>
+
+<div class="dmask" id="dmask"></div>
+<div class="detail" id="detail"></div>
+
+<div class="foot">
+  人数はしるし(◎△☆✕)にかかわらず1人=1で数えます。名簿にない人(応援・臨時)も1人として数えます。<br>
+  「休み」は人工に数えません。0は「·」で表します。月をまたぐ週は、日付でその月のぶんだけ数えます。
+</div>
+
+<script src="common.js"></script>
+<script>
+/* =====================================================================
+   集計ページ。読むだけです(予定は書き替えません)。
+   その月にかかる週ノードをまとめて読み、日付で振り分けて数えます。
+   ===================================================================== */
+(function () {
+  'use strict';
+
+  var now = new Date();
+  var S = {
+    y: now.getFullYear(),
+    m: now.getMonth() + 1,
+    showAll: false,
+    data: null,     // monthCounts の結果
+    weeks: null,    // その月にかかる週データ(内訳で使います)
+    allWeeks: null, // 全期間ぶん。内訳をはじめて開いたときに1回だけ読みます
+    detail: null,   // いま開いている内訳
+    loading: false
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+    });
+  };
+
+  function boot() {
+    YY.init();
+    // 工事名を出すために名簿(工事)を読みます
+    YY.subscribeJobs(function () { if (S.data) draw(); });
+
+    $('prev').addEventListener('click', function () { shift(-1); });
+    $('next').addEventListener('click', function () { shift(1); });
+    $('thisM').addEventListener('click', function () {
+      var d = new Date();
+      S.y = d.getFullYear(); S.m = d.getMonth() + 1;
+      load();
+    });
+    $('showAll').addEventListener('change', function () {
+      S.showAll = $('showAll').checked;
+      draw();
+    });
+    $('btnXls').addEventListener('click', exportExcel);
+
+    // 内訳は、外側のクリックか Esc でも閉じます
+    $('dmask').addEventListener('click', closeDetail);
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeDetail();
+    });
+
+    load();
+  }
+
+  function shift(n) {
+    var m = S.m + n, y = S.y;
+    if (m < 1) { m = 12; y--; }
+    if (m > 12) { m = 1; y++; }
+    S.y = y; S.m = m;
+    load();
+  }
+
+  function load() {
+    $('ym').textContent = S.y + '年' + S.m + '月';
+    $('body').innerHTML = '<div class="msg">読み込んでいます…</div>';
+    $('sum').textContent = '';
+    S.loading = true;
+
+    closeDetail();
+    S.allWeeks = null;      // 月を動かしたら、全期間ぶんも読み直します
+    YY.loadMonthWeeks(S.y, S.m).then(function (weeks) {
+      S.loading = false;
+      S.weeks = weeks;
+      S.data = YY.monthCounts(weeks, S.y, S.m);
+      $('obiWarn').classList.remove('on');
+      draw();
+    }).catch(function (e) {
+      S.loading = false;
+      $('obiWarn').textContent = '読み込めませんでした:' + (e && e.message ? e.message : e);
+      $('obiWarn').classList.add('on');
+      $('body').innerHTML = '<div class="msg">読み込めませんでした</div>';
+    });
+  }
+
+  /* --- 表を描く --------------------------------------------------- */
+
+  function rowsToShow() {
+    var d = S.data;
+    if (!S.showAll) return d.jobIds;
+    // 「予定のない工事も出す」= 工事一覧の全件(人が出た消し済み工事も後ろに付けます)
+    var ids = YY.master.jobs.map(function (j) { return j.id; });
+    var have = {};
+    ids.forEach(function (id) { have[id] = true; });
+    d.jobIds.forEach(function (id) { if (!have[id]) ids.push(id); });
+    return ids;
+  }
+
+  function draw() {
+    var d = S.data;
+    if (!d) return;
+    var ids = rowsToShow();
+
+    $('sum').innerHTML = S.m + '月の総人工 <b>' + d.total + '</b> 人工' +
+      '<span style="color:var(--usu);font-weight:400"> / 工事 ' + d.jobIds.length + '件</span>';
+
+    if (!ids.length) {
+      $('body').innerHTML = '<div class="msg">' +
+        (YY.master.jobs.length
+          ? S.y + '年' + S.m + '月は、まだ予定が入っていません'
+          : '工事がまだ登録されていません') + '</div>';
+      return;
+    }
+
+    var today = YY.todayKey();
+    var h = ['<div class="wrap"><table><thead><tr>'];
+    h.push('<th class="jn">工事(' + ids.length + '件)</th>');
+    d.dates.forEach(function (dt) {
+      var day = YY.parseKey(dt);
+      var cls = 'd' + (YY.isWeekend(dt) ? ' we' : '') + (dt === today ? ' today' : '');
+      h.push('<th class="' + cls + '">' + day.getDate() +
+        '<span class="w">' + YY.DOW[YY.dowIndex(dt)] + '</span></th>');
+    });
+    h.push('<th class="tot">月計</th></tr></thead><tbody>');
+
+    ids.forEach(function (id) {
+      var lab = YY.jobLabel(id);
+      h.push('<tr><td class="jn" data-job="' + esc(id) + '" title="クリックで内訳を見る">' +
+        '<div class="n">' + esc(lab.name) + '</div>' +
+        (lab.sub ? '<div class="no">' + esc(lab.sub) + '</div>' : '') + '</td>');
+      d.dates.forEach(function (dt) {
+        var n = (d.byJob[id] || {})[dt] || 0;
+        var cls = 'd' + (YY.isWeekend(dt) ? ' we' : '') + (n ? '' : ' zero');
+        h.push('<td class="' + cls + '">' + (n ? n : '·') + '</td>');
+      });
+      h.push('<td class="tot">' + (d.jobTotal[id] || 0) + '</td></tr>');
+    });
+
+    h.push('</tbody><tfoot><tr><td class="jn">' + S.m + '月の総人工</td>');
+    d.dates.forEach(function (dt) {
+      var n = d.dayTotal[dt] || 0;
+      var cls = 'd' + (YY.isWeekend(dt) ? ' we' : '') + (n ? '' : ' zero');
+      h.push('<td class="' + cls + '">' + (n ? n : '·') + '</td>');
+    });
+    h.push('<td class="tot">' + d.total + '</td></tr></tfoot></table></div>');
+
+    $('body').innerHTML = h.join('');
+
+    // 工事名をクリックすると内訳が出ます
+    Array.prototype.forEach.call($('body').querySelectorAll('td.jn[data-job]'), function (td) {
+      td.addEventListener('click', function () { openDetail(td.getAttribute('data-job')); });
+    });
+  }
+
+  /* --- 工事ごとの内訳 ----------------------------------------------- */
+
+  function namesHTML(rows, extras) {
+    return rows.map(function (r) {
+      return '<span' + (r.coop ? ' style="color:var(--kyoryoku)"' : '') + '>' +
+        (r.mark ? '<span class="sc">' + esc(r.mark) + '</span>' : '') +
+        esc(r.name) + '</span>';
+    }).concat((extras || []).map(function (x) { return esc(x); }))
+      .join('<span class="sep">・</span>');
+  }
+
+  function ymd(dateKey) {
+    var d = YY.parseKey(dateKey);
+    return d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate();
+  }
+
+  function openDetail(jobId) {
+    if (!S.weeks) return;
+    S.detail = {
+      jobId: jobId,
+      month: YY.jobMonthDetail(S.weeks, jobId, S.y, S.m),
+      all: null,          // 全期間。読めたら入ります
+      scope: 'month'      // 既定は「この月」
+    };
+    drawDetail();
+    $('detail').classList.add('on');
+    $('dmask').classList.add('on');
+
+    // 全期間は、開いたときに1回だけ読みます(ページ内で使い回します)
+    if (S.allWeeks) {
+      S.detail.all = YY.jobDetail(S.allWeeks, jobId, null);
+      drawDetail();
+    } else {
+      YY.loadAllWeeks().then(function (all) {
+        S.allWeeks = all;
+        if (!S.detail || S.detail.jobId !== jobId) return;
+        S.detail.all = YY.jobDetail(all, jobId, null);
+        drawDetail();
+      }).catch(function (e) {
+        if (!S.detail) return;
+        S.detail.allError = (e && e.message) ? e.message : String(e);
+        drawDetail();
+      });
+    }
+  }
+
+  function drawDetail() {
+    var D = S.detail; if (!D) return;
+    var lab = YY.jobLabel(D.jobId);
+    var m = D.month, all = D.all;
+
+    var h = ['<div class="dh"><div><div class="jt">' + esc(lab.name) + '</div>'];
+    h.push('<div class="jsub">' + (lab.sub ? '注番 ' + esc(lab.sub) : 'この工事の内訳') + '</div></div>');
+    h.push('<button class="x" id="dclose">✕ 閉じる</button></div>');
+
+    /* 上部:全期間と、その月 */
+    h.push('<div class="dtot">');
+    h.push('<div class="dline"><span class="lb2">この工事の総人工</span>' +
+      (all
+        ? '<span><b>' + all.total + '</b>人工 <span class="rest3">/ ' + all.days.length +
+          '日 / 実人数 ' + all.people.length + '名</span></span>'
+        : '<span class="rest3">' + (D.allError ? '読めませんでした' : '集計中…') + '</span>') +
+      '</div>');
+    h.push('<div class="dline sub"><span class="lb2 sub">うち ' + S.y + '年' + S.m + '月</span>' +
+      '<span><b>' + m.total + '</b>人工 <span class="rest3">/ ' + m.days.length +
+      '日 / 実人数 ' + m.people.length + '名</span></span></div>');
+
+    if (all && all.first) {
+      h.push('<div class="dterm">期間 ' + ymd(all.first) + ' 〜 ' + ymd(all.last) + '</div>');
+    }
+
+    /* 切り替え */
+    h.push('<div class="dscope">' +
+      '<button data-scope="month" class="' + (D.scope === 'month' ? 'on' : '') + '">この月</button>' +
+      '<button data-scope="all" class="' + (D.scope === 'all' ? 'on' : '') + '"' +
+      (all ? '' : ' disabled') + '>全期間' + (all ? '' : '(集計中…)') + '</button></div>');
+    h.push('</div>');
+
+    /* 中身 */
+    var d = (D.scope === 'all' && all) ? all : m;
+    var label = (D.scope === 'all' && all) ? '全期間' : S.y + '年' + S.m + '月';
+    h.push('<div class="db">');
+
+    if (!d.days.length) {
+      h.push('<div class="msg">' + esc(label) + 'は、この工事に予定が入っていません</div>');
+    } else {
+      h.push('<h3>日ごとの内訳(' + esc(label) + ')</h3>');
+      d.days.forEach(function (x) {
+        var dt = YY.parseKey(x.date);
+        var we = YY.isWeekend(x.date);
+        // 全期間のときは年月も出します
+        var lbl = (D.scope === 'all')
+          ? (dt.getFullYear() % 100) + '/' + (dt.getMonth() + 1) + '/' + dt.getDate()
+          : (dt.getMonth() + 1) + '/' + dt.getDate();
+        h.push('<div class="dday">' +
+          '<div class="dt' + (we ? ' we' : '') + '">' + lbl +
+          '(' + YY.DOW[YY.dowIndex(x.date)] + ')</div>' +
+          '<div class="dn">' + x.count + '名</div>' +
+          '<div class="dm">' + namesHTML(x.rows, x.extras) + '</div></div>');
+      });
+
+      var max = d.people[0] ? d.people[0].count : 1;
+      h.push('<h3>人ごとの合計(' + esc(label) + '・何日入ったか)</h3><table class="dtable">');
+      d.people.forEach(function (p) {
+        var w = Math.max(6, Math.round(p.count / max * 90));
+        h.push('<tr><td class="pn' + (p.coop ? ' coop' : '') + '">' + esc(p.name) +
+          (p.extra ? '<span class="ex">名簿にない人</span>' : '') + '</td>');
+        h.push('<td class="pc"><span class="dbar" style="width:' + w + 'px"></span>' +
+          p.count + '日</td>');
+        h.push('<td class="pd">' + p.days.map(function (dd) {
+          var t = YY.parseKey(dd);
+          return (D.scope === 'all' ? (t.getFullYear() % 100) + '/' : '') +
+            (t.getMonth() + 1) + '/' + t.getDate();
+        }).join('・') + '</td></tr>');
+      });
+      h.push('</table>');
+    }
+    h.push('</div>');
+
+    $('detail').innerHTML = h.join('');
+    $('dclose').addEventListener('click', closeDetail);
+    Array.prototype.forEach.call($('detail').querySelectorAll('.dscope button'), function (b) {
+      b.addEventListener('click', function () {
+        if (b.disabled) return;
+        S.detail.scope = b.getAttribute('data-scope');
+        drawDetail();
+      });
+    });
+    $('detail').querySelector('.db').scrollTop = 0;
+  }
+
+  function closeDetail() {
+    S.detail = null;
+    $('detail').classList.remove('on');
+    $('dmask').classList.remove('on');
+  }
+
+  /* --- Excel書き出し ----------------------------------------------- */
+
+  function sheetRows() {
+    var d = S.data, ids = rowsToShow();
+    var head = ['工事', '注番'];
+    d.dates.forEach(function (dt) {
+      head.push(YY.parseKey(dt).getDate() + '(' + YY.DOW[YY.dowIndex(dt)] + ')');
+    });
+    head.push('月計');
+
+    var rows = [head];
+    ids.forEach(function (id) {
+      var lab = YY.jobLabel(id);
+      var r = [lab.name, lab.sub || ''];
+      d.dates.forEach(function (dt) { r.push((d.byJob[id] || {})[dt] || 0); });
+      r.push(d.jobTotal[id] || 0);
+      rows.push(r);
+    });
+
+    var last = [S.m + '月の総人工', ''];
+    d.dates.forEach(function (dt) { last.push(d.dayTotal[dt] || 0); });
+    last.push(d.total);
+    rows.push(last);
+    return rows;
+  }
+
+  function exportExcel() {
+    if (!S.data) { alert('まだ読み込んでいません'); return; }
+    var rows = sheetRows();
+    var name = 'よつば_人工集計_' + S.y + '年' + ('0' + S.m).slice(-2) + '月';
+
+    if (typeof XLSX === 'undefined') {
+      // SheetJS が読めない環境では CSV で出します
+      var csv = rows.map(function (r) {
+        return r.map(function (c) {
+          var s = String(c);
+          return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+        }).join(',');
+      }).join('\r\n');
+      download(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }), name + '.csv');
+      $('obiWarn').textContent = 'Excelの部品を読み込めなかったので、CSVで書き出しました';
+      $('obiWarn').classList.add('on');
+      return;
+    }
+
+    var ws = XLSX.utils.aoa_to_sheet(rows);
+    // 列幅:工事名は広め、日付は狭く
+    var w = [{ wch: 28 }, { wch: 10 }];
+    S.data.dates.forEach(function () { w.push({ wch: 4 }); });
+    w.push({ wch: 7 });
+    ws['!cols'] = w;
+    ws['!freeze'] = { xSplit: 2, ySplit: 1 };
+
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, S.y + '年' + S.m + '月');
+    XLSX.writeFile(wb, name + '.xlsx');
+  }
+
+  function download(blob, filename) {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>
