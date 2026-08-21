@@ -144,6 +144,11 @@ input{font-family:inherit}
 /* ============ 予定グリッド ============ */
 .gridwrap{overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px}
 .grid{display:grid;grid-template-columns:112px repeat(7,86px);font-size:15px;min-width:min-content}
+/* 工事名の列は左に固定。横スワイプしても、どの工事か分かるようにします */
+.grid .corner,.grid .job,.grid .rest,.grid .yohd{
+  position:sticky;left:0;z-index:2;box-shadow:1px 0 0 var(--keisen);
+}
+.grid .cathd{position:sticky;left:0;z-index:3}
 .grid .hd{
   padding:8px 4px;text-align:center;border-bottom:1px solid var(--keisen);
   border-left:1px solid var(--keisen2);background:#fff;
@@ -221,6 +226,11 @@ input{font-family:inherit}
 }
 .grid .job .kept .badge{font-size:11px;font-weight:700;color:var(--usu2);line-height:1.3}
 .grid .job .kept .why{font-size:10px;color:var(--usu);line-height:1.3;margin-top:1px}
+/* 開始日が来ているのに、まだ人が入っていない工事 */
+.grid .job .waiting{
+  margin-top:3px;display:inline-block;background:var(--kiji);border:1px solid var(--kiwaku);
+  border-radius:6px;padding:1px 6px;font-size:10px;font-weight:700;color:var(--ki);line-height:1.4;
+}
 .popmask{position:fixed;inset:0;z-index:39;display:none;background:transparent}
 .popmask.on{display:block}
 .jobpop{
@@ -276,7 +286,7 @@ input{font-family:inherit}
 
 /* ============ 下タブ ============ */
 .tabs{
-  margin-top:auto;display:grid;grid-template-columns:repeat(3,1fr);
+  margin-top:auto;display:grid;grid-template-columns:repeat(4,1fr);
   background:#fff;border-top:1px solid var(--keisen);
   padding:6px 4px calc(10px + env(safe-area-inset-bottom));position:sticky;bottom:0;z-index:20;
 }
@@ -656,7 +666,7 @@ input{font-family:inherit}
   <div class="tabs">
     <button data-tab="plan" class="on"><div class="i">📅</div><div class="l">予定を組む</div></button>
     <button data-tab="check"><div class="i">🔍</div><div class="l">チェック</div></button>
-    <button data-tab="line" class="pconly"><div class="i">💬</div><div class="l">配信</div></button>
+    <button data-tab="line"><div class="i">💬</div><div class="l">配信</div></button>
     <button data-tab="members"><div class="i">👥</div><div class="l">メンバー</div></button>
   </div>
 </div>
@@ -689,6 +699,9 @@ input{font-family:inherit}
     unsubWeek: null,
     prevMonday: null,    // 先週の月曜(コピー元)
     prevWeek: null,      // 先週のデータ。読めるまでは null
+    nearBase: null,      // 直近の週を読んだときの基準
+    nearWeeks: {},       // 直近4週ぶん(最後に人が入った日を調べます)
+    nearLoaded: false,
     sheet: null,         // 選択シートの作業中の中身
     pickDate: null,      // チェック・配信で選んでいる日(共通)
     onlyUsed: true,      // 予定を組む:その週に人が入っている工事だけ出すか
@@ -793,7 +806,12 @@ input{font-family:inherit}
     render();
   }
 
-  /** 表示中の週を購読しなおします。あわせて先週ぶんも読みます(コピー元) */
+  /**
+   * 表示中の週を購読しなおします。
+   * あわせて直近週ぶんを1回読みます。使いみちは2つです。
+   *   ・先週からのコピー元
+   *   ・「使う工事だけ」で、最後に人が入った日を調べる
+   */
   function watchWeek() {
     if (S.unsubWeek) S.unsubWeek();
     S.unsubWeek = YY.subscribeWeek(S.monday, function (w) {
@@ -802,16 +820,34 @@ input{font-family:inherit}
       if (S.sheet) refreshSheet();   // シートを開いたまま他の人が編集したとき
     });
 
-    // 先週は「コピー元」としてだけ使うので、1回読むだけにします
-    var pm = YY.addWeeks(S.monday, -1);
-    S.prevMonday = pm;
+    var base = S.monday;
+    var keys = [];
+    for (var i = 1; i <= YY.JOB_KEEP_WEEKS; i++) keys.push(YY.addWeeks(base, -i));
+    S.nearBase = base;
+    S.nearWeeks = {};
+    S.nearLoaded = false;
     S.prevWeek = null;
-    YY.loadWeek(pm).then(function (w) {
-      if (S.prevMonday !== pm) return;    // 読んでいる間に週が動いたら捨てます
-      S.prevWeek = w;
+
+    Promise.all(keys.map(function (k) {
+      return YY.loadWeek(k).then(function (w) { return { k: k, w: w }; });
+    })).then(function (list) {
+      if (S.nearBase !== base) return;   // 読んでいる間に週が動いたら捨てます
+      var m = {};
+      list.forEach(function (x) { m[x.k] = x.w; });
+      S.nearWeeks = m;
+      S.nearLoaded = true;
+      S.prevWeek = m[YY.addWeeks(base, -1)] || null;
       render();
       if (S.sheet) refreshSheet();
     });
+  }
+
+  /** 判定に使う週のまとまり(表示中の週 + 直近の週) */
+  function nearWeeksAll() {
+    var m = {};
+    Object.keys(S.nearWeeks || {}).forEach(function (k) { m[k] = S.nearWeeks[k]; });
+    m[S.monday] = S.week;
+    return m;
   }
 
   function goWeek(n) {
@@ -825,8 +861,6 @@ input{font-family:inherit}
      画面の描き分け
      ================================================================= */
   function render() {
-    // 配信タブはPCだけです。スマホ幅になったら予定表へ戻します
-    if (!isPC() && S.tab === 'line') S.tab = 'plan';
     Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function (x) {
       x.classList.toggle('on', x.getAttribute('data-tab') === S.tab);
     });
@@ -905,13 +939,13 @@ input{font-family:inherit}
     cats.forEach(function (cat) {
       var jobs = YY.jobsByCat(cat, used);
       // 「使う工事だけ」= その週に1人でも入っている工事だけ
-      if (S.onlyUsed) jobs = jobs.filter(function (j) { return used[j.id]; });
+      if (S.onlyUsed) jobs = jobs.filter(function (j) { return jobInUse(j, used); });
       if (S.cat === 'all') {
         g.appendChild(el('div', 'cathd', esc(YY.CATEGORIES.labels[cat])));
       }
       jobs.forEach(function (j, i) {
         any = true;
-        g.appendChild(jobCell(j, i, jobs.length));
+        g.appendChild(jobCell(j, i, jobs.length, used));
         days.forEach(function (d) { g.appendChild(planCell(j.id, d, st[d])); });
       });
       // カテゴリごとの一番下に置きます(絞り込みに関わらず、いつでも出します)
@@ -978,6 +1012,22 @@ input{font-family:inherit}
     return c;
   }
 
+  /** 2026-09-01 → 9/1 */
+  function mdLabel(dateKey) {
+    if (!dateKey) return '';
+    var d = YY.parseKey(dateKey);
+    return (d.getMonth() + 1) + '/' + d.getDate();
+  }
+
+  /** 「使う工事だけ」で出す条件:その週に人が入っている、または開始日が来ている */
+  function jobInUse(j, used) {
+    if (used[j.id]) return true;
+    // 直近の週を読んでいる途中は、隠さずに出しておきます
+    if (!S.nearLoaded) return YY.jobStartedByWeek(j, S.monday);
+    var ref = YY.toKey(YY.addDays(YY.parseKey(S.monday), 6));   // その週の日曜
+    return YY.jobShouldShow(j, nearWeeksAll(), ref, false);
+  }
+
   /**
    * 「使う工事だけ / すべて」の切り替え。
    * 工事が増えると縦に長くなるので、既定はその週に人が入っている工事だけです。
@@ -988,7 +1038,7 @@ input{font-family:inherit}
     var shown = 0, hidden = 0;
     cats.forEach(function (cat) {
       YY.jobsByCat(cat, used).forEach(function (j) {
-        if (used[j.id]) shown++; else hidden++;
+        if (jobInUse(j, used)) shown++; else hidden++;
       });
     });
 
@@ -1037,14 +1087,17 @@ input{font-family:inherit}
    * 工事名のセル。クリックで編集の吹き出しが開きます。
    * 注番は【入っているときだけ】行を出します(空欄で行を使いません)。
    */
-  function jobCell(j, idx, total) {
+  function jobCell(j, idx, total, used) {
     var c = el('div', 'job', '');
+    // 開始日が来ているのに、その週まだ誰も入っていない工事
+    var waiting = !(used || {})[j.id] && YY.jobStartedByWeek(j, S.monday);
     c.setAttribute('data-job', j.id);
     c.setAttribute('data-idx', idx);
     c.setAttribute('data-total', total);
 
     c.innerHTML = '<div class="n">' + esc(j.name) + '</div>' +
       (j.no ? '<div class="no">' + esc(j.no) + '</div>' : '') +
+      (waiting ? '<div class="waiting">' + esc(mdLabel(j.start)) + ' 開始・まだ人なし</div>' : '') +
       // 「隠す」にしたのに表にある工事は、その理由をはっきり出します
       (!j.active
         ? '<div class="kept">' +
@@ -1129,6 +1182,19 @@ input{font-family:inherit}
     inNo.placeholder = '空のままで登録できます';
     f2.appendChild(inNo);
     inr.appendChild(f2);
+
+    /* 開始日(任意) */
+    var f2b = el('div', 'fld', '<div class="lb">開始日<small>(任意)</small></div>');
+    var inStart = document.createElement('input');
+    inStart.type = 'date';
+    inStart.className = 'sub';
+    inStart.value = isNew ? '' : (j.start || '');
+    f2b.appendChild(inStart);
+    inr.appendChild(f2b);
+    inr.appendChild(el('div', 'fld',
+      '<div class="lb"></div><div class="note">' +
+      '入れておくと、その日が来た週から「使う工事だけ」でも表に出ます' +
+      '</div>'));
 
     /* カテゴリ */
     var f3 = el('div', 'fld', '<div class="lb">カテゴリ</div>');
@@ -1219,20 +1285,21 @@ input{font-family:inherit}
       }
 
       var no = (inNo.value || '').trim();
+      var st = (inStart.value || '').trim();
       var cat = S.editCat;
       closeJobPop();
       if (isNew) {
-        YY.addJob(nm, cat, no).then(function () {
+        YY.addJob(nm, cat, no, st).then(function () {
           toast('「' + nm + '」を追加しました');
         }).catch(function (e) { toast('追加できませんでした:' + e.message); });
       } else {
-        YY.updateJob(jobId, { name: nm, no: no, category: cat }).then(function () {
+        YY.updateJob(jobId, { name: nm, no: no, start: st, category: cat }).then(function () {
           toast('工事を直しました');
         }).catch(function (e) { toast('直せませんでした:' + e.message); });
       }
     }
 
-    [inName, inNo].forEach(function (x) {
+    [inName, inNo, inStart].forEach(function (x) {
       x.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') { e.preventDefault(); submit(); }
         if (e.key === 'Escape') { e.preventDefault(); closeJobPop(); }

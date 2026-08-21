@@ -162,6 +162,11 @@ input{font-family:inherit}
 .jobcard.rest2 .jn{color:var(--usu2);font-size:16px}
 /* まだ人が決まっていない工事。大きさは同じで、文字だけ薄くします */
 .jobcard .names.mitei2{color:#b9b3a2;font-weight:400}
+/* 開始日が来ているのに、まだ人が入っていない工事 */
+.jobcard .wtag{
+  display:inline-block;background:var(--kiji);border:1px solid var(--kiwaku);border-radius:8px;
+  padding:1px 8px;font-size:13px;font-weight:700;color:var(--ki);margin-right:6px;
+}
 .nm{white-space:nowrap}
 .nm.coop{color:var(--kyoryoku)}
 .nm.me{background:#fff6b8;border-radius:4px;padding:0 3px;font-weight:900}
@@ -266,6 +271,9 @@ input{font-family:inherit}
     onlyUsed: true,     // その日に人が入っている工事だけ出すか
     pickDate: null,     // 予定表で見ている日
     online: true,
+    nearBase: null,
+    nearWeeks: {},      // 直近4週ぶん(最後に人が入った日を調べます)
+    nearLoaded: false,
     unsubWeek: null
   };
 
@@ -339,6 +347,32 @@ input{font-family:inherit}
   function watchWeek() {
     if (S.unsubWeek) S.unsubWeek();
     S.unsubWeek = YY.subscribeWeek(S.monday, function (w) { S.week = w; render(); });
+
+    // 直近の週も1回だけ読みます(最後に人が入った日を調べるため)
+    var base = S.monday;
+    var keys = [];
+    for (var i = 1; i <= YY.JOB_KEEP_WEEKS; i++) keys.push(YY.addWeeks(base, -i));
+    S.nearBase = base;
+    S.nearWeeks = {};
+    S.nearLoaded = false;
+    Promise.all(keys.map(function (k) {
+      return YY.loadWeek(k).then(function (w) { return { k: k, w: w }; });
+    })).then(function (list) {
+      if (S.nearBase !== base) return;
+      var m = {};
+      list.forEach(function (x) { m[x.k] = x.w; });
+      S.nearWeeks = m;
+      S.nearLoaded = true;
+      render();
+    });
+  }
+
+  /** 判定に使う週のまとまり(表示中の週 + 直近の週) */
+  function nearWeeksAll() {
+    var m = {};
+    Object.keys(S.nearWeeks || {}).forEach(function (k) { m[k] = S.nearWeeks[k]; });
+    m[S.monday] = S.week;
+    return m;
   }
 
   function goWeek(n) {
@@ -588,7 +622,7 @@ input{font-family:inherit}
     var nUse = 0, nHide = 0;
     catList.forEach(function (cat) {
       YY.jobsByCat(cat, usedJobIds()).forEach(function (j) {
-        if (YY.cellCount(S.week, j.id, S.pickDate)) nUse++; else nHide++;
+        if (jobInUse(j)) nUse++; else nHide++;
       });
     });
 
@@ -616,7 +650,7 @@ input{font-family:inherit}
       var jobs = YY.jobsByCat(cat, usedJobIds());
       // 「使う工事だけ」= その日に1人でも入っている工事だけ
       if (S.onlyUsed) {
-        jobs = jobs.filter(function (j) { return YY.cellCount(S.week, j.id, S.pickDate); });
+        jobs = jobs.filter(function (j) { return jobInUse(j); });
       }
       if (!jobs.length) return;
       if (S.cat === 'all') box.appendChild(el('div', 'cathd2', esc(YY.CATEGORIES.labels[cat])));
@@ -634,7 +668,10 @@ input{font-family:inherit}
           card.appendChild(el('div', 'names', namesHTML(c.rows, c.extras)));
           card.appendChild(el('div', 'cnt', c.count + '名'));
         } else {
-          card.appendChild(el('div', 'names mitei2', 'まだ決まっていません'));
+          card.appendChild(el('div', 'names mitei2',
+            YY.jobStartedBy(j, S.pickDate)
+              ? '<span class="wtag">' + esc(mdLabel(j.start)) + ' 開始</span> まだ決まっていません'
+              : 'まだ決まっていません'));
           card.appendChild(el('div', 'cnt', '0名'));
         }
         box.appendChild(card);
@@ -673,6 +710,21 @@ input{font-family:inherit}
     }
 
     b.appendChild(box);
+  }
+
+  /** 「使う工事だけ」で出す条件:その日に人が入っている、または開始日が来ている */
+  function jobInUse(j) {
+    if (YY.cellCount(S.week, j.id, S.pickDate)) return true;
+    // 直近の週を読んでいる途中は、隠さずに出しておきます
+    if (!S.nearLoaded) return YY.jobStartedBy(j, S.pickDate);
+    return YY.jobShouldShow(j, nearWeeksAll(), S.pickDate, false);
+  }
+
+  /** 2026-09-01 → 9/1 */
+  function mdLabel(dateKey) {
+    if (!dateKey) return '';
+    var d = YY.parseKey(dateKey);
+    return (d.getMonth() + 1) + '/' + d.getDate();
   }
 
   /** 予定に出てくる工事id(隠した工事でも、人が入っていれば出すため) */

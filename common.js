@@ -63,6 +63,8 @@
   var JOBS_PATH = 'yotei/jobs';
   var JOB_NAME_MAX = 60;
   var JOB_NO_MAX = 30;
+  // 終わった工事を自動で引っこめるまでの週数。増やすと長く残ります
+  var JOB_KEEP_WEEKS = 4;
 
   /* --- そのほか ------------------------------------------------------- */
   var REST_KEY = 'REST';                     // 「休み」行の jobKey
@@ -479,6 +481,7 @@
         id: id,
         name: String(j.name),
         no: j.no ? String(j.no) : '',
+        start: cleanStart(j.start),      // 開始日(任意)。'' なら未設定
         category: (CATEGORIES.labels[j.category] ? j.category : 3),
         order: (typeof j.order === 'number') ? j.order : 0,
         active: j.active !== false
@@ -526,6 +529,59 @@
   function cleanJobName(s) { return String(s == null ? '' : s).trim().slice(0, JOB_NAME_MAX); }
   function cleanJobNo(s) { return String(s == null ? '' : s).trim().slice(0, JOB_NO_MAX); }
 
+  /** 開始日。'YYYY-MM-DD' の形だけ通します。それ以外は '' にします */
+  function cleanStart(s) {
+    var t = String(s == null ? '' : s).trim();
+    return /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(t) ? t : '';
+  }
+
+  /**
+   * その工事が、その日までに始まっているか。
+   * 開始日が入っていなければ false(判定の材料が無いため)。
+   */
+  function jobStartedBy(job, dateKey) {
+    return !!(job && job.start && job.start <= dateKey);
+  }
+
+  /**
+   * その工事に人が入った、いちばん新しい日。渡した週の中だけで探します。
+   * 見つからなければ '' を返します。
+   */
+  function lastUsedDate(weeks, jobId) {
+    var last = '';
+    Object.keys(weeks || {}).forEach(function (wk) {
+      var days = (((weeks[wk] || {}).assign) || {})[jobId] || {};
+      Object.keys(days).forEach(function (d) {
+        var c = days[d] || {};
+        if (Object.keys(c.members || {}).length || (c.extras || []).length) {
+          if (d > last) last = d;
+        }
+      });
+    });
+    return last;
+  }
+
+  /**
+   * 「使う工事だけ」で出すかどうか。
+   *   ・いま人が入っている(usedNow)             → 出す
+   *   ・開始日が来ていて、最後に人が入った日から JOB_KEEP_WEEKS 週以内 → 出す
+   *   ・一度も人が入っていなければ、開始日から JOB_KEEP_WEEKS 週以内   → 出す
+   * ref は基準の日(編集アプリは週の日曜、確認用アプリは見ている日)。
+   * weeks には、ref から JOB_KEEP_WEEKS 週ぶんさかのぼった週データを渡してください。
+   */
+  function jobShouldShow(job, weeks, ref, usedNow) {
+    if (usedNow) return true;
+    if (!job || !job.start || job.start > ref) return false;   // まだ始まっていません
+    var limit = toKey(addDays(parseKey(ref), -JOB_KEEP_WEEKS * 7));
+    var last = lastUsedDate(weeks, job.id);
+    return last ? (last >= limit) : (job.start >= limit);
+  }
+
+  /** その工事が、その週(月曜キー)までに始まっているか。週の日曜で見ます */
+  function jobStartedByWeek(job, mondayKey) {
+    return jobStartedBy(job, toKey(addDays(parseKey(mondayKey), 6)));
+  }
+
   /** そのカテゴリの最後に置くための order */
   function nextJobOrder(cat) {
     var max = -1;
@@ -539,7 +595,7 @@
    * 工事を1件起こします。工事名だけあれば登録できます。
    * 戻り値は新しい id(そのまま予定のキーになります)。
    */
-  function addJob(name, cat, no) {
+  function addJob(name, cat, no, start) {
     initFirebase();
     var nm = cleanJobName(name);
     if (!nm) return Promise.reject(new Error('工事名を入れてください'));
@@ -550,6 +606,7 @@
       id: id,
       name: nm,
       no: cleanJobNo(no),
+      start: cleanStart(start),
       category: c,
       order: nextJobOrder(c),
       active: true
@@ -572,6 +629,7 @@
       up.name = nm;
     }
     if (patch.no != null) up.no = cleanJobNo(patch.no);
+    if (patch.start != null) up.start = cleanStart(patch.start);
     if (patch.active != null) up.active = !!patch.active;
     if (patch.category != null && patch.category !== j.category) {
       var c = CATEGORIES.labels[patch.category] ? patch.category : 3;
@@ -1300,6 +1358,12 @@
     deleteJob: deleteJob,
     moveJob: moveJob,
     nextJobOrder: nextJobOrder,
+    cleanStart: cleanStart,
+    jobStartedBy: jobStartedBy,
+    jobStartedByWeek: jobStartedByWeek,
+    JOB_KEEP_WEEKS: JOB_KEEP_WEEKS,
+    lastUsedDate: lastUsedDate,
+    jobShouldShow: jobShouldShow,
 
     // 週データ
     subscribeWeek: subscribeWeek,

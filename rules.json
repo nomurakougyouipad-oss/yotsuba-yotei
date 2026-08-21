@@ -29,6 +29,7 @@
           "id":       { ".validate": "newData.isString() && newData.val() === $jobId" },
           "name":     { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 60" },
           "no":       { ".validate": "newData.isString() && newData.val().length <= 30" },
+          "start":    { ".validate": "newData.isString() && (newData.val() === '' || newData.val().matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/))" },
           "category": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 3" },
           "order":    { ".validate": "newData.isNumber()" },
           "active":   { ".validate": "newData.isBoolean()" },
