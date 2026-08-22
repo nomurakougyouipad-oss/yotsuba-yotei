@@ -43,7 +43,10 @@ input{font-family:inherit}
 /* ============ 全体の枠 ============ */
 #app{display:flex;flex-direction:column;height:100vh;overflow:hidden;background:var(--kinari)}
 /* 予定を組むタブだけ、表そのものをスクロールさせます(見出しを固定するため) */
-#body{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+#body{
+  flex:1;min-height:0;overflow-y:auto;
+  overscroll-behavior:contain;      /* 端で引っぱっても外側が動かないように */
+}
 #body.plan{overflow:hidden;display:flex;flex-direction:column}
 .head{
   background:var(--midori);color:#fff;padding:14px 16px 12px;
@@ -112,7 +115,7 @@ input{font-family:inherit}
 .weeknav .lbl span{font-size:12px;color:var(--usu)}
 
 /* カテゴリタブ */
-.cats{display:flex;gap:8px;padding:12px 12px 10px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.cats{display:flex;gap:8px;padding:12px 12px 10px;overflow-x:auto}
 .cats::-webkit-scrollbar{display:none}
 .cats button{
   min-height:44px;padding:0 14px;border-radius:22px;border:1px solid var(--keisen);
@@ -192,20 +195,26 @@ input{font-family:inherit}
 }
 
 /* ============ 予定グリッド ============ */
-.gridwrap{overflow:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px}
+.gridwrap{
+  overflow:auto;padding-bottom:4px;
+  overscroll-behavior:contain;      /* 端での跳ね返りを抑えます */
+  transform:translateZ(0);          /* 描画をGPUに任せて、固定した行と列のブレを抑えます */
+}
 #body.plan .gridwrap{flex:1;min-height:0}
 .grid{display:grid;grid-template-columns:112px repeat(7,86px);font-size:15px;min-width:min-content}
 /* 工事名の列は左に固定。横スワイプしても、どの工事か分かるようにします */
 .grid .job,.grid .rest,.grid .yohd{
   position:sticky;left:0;z-index:2;box-shadow:1px 0 0 var(--keisen);
+  backface-visibility:hidden;        /* スクロール中のにじみ・ズレを抑えます */
 }
 .grid .cathd{position:sticky;left:0;z-index:3}
 /* 曜日の見出しは上に固定。縦にスクロールしても残ります */
-.grid .hd{position:sticky;top:0;z-index:4}
+.grid .hd{position:sticky;top:0;z-index:4;backface-visibility:hidden}
 /* 左上の角は、上にも左にも固定します */
 .grid .corner{
   position:sticky;top:0;left:0;z-index:6;
   box-shadow:1px 0 0 var(--keisen),0 1px 0 var(--keisen);
+  backface-visibility:hidden;
 }
 .grid .hd{
   padding:8px 4px;text-align:center;border-bottom:1px solid var(--keisen);
@@ -300,7 +309,7 @@ input{font-family:inherit}
   flex-direction:column;overflow:hidden;
 }
 .jobpop.on{display:flex}
-.jobpop .in{overflow-y:auto;-webkit-overflow-scrolling:touch}
+.jobpop .in{overflow-y:auto}
 .jobpop .arrow{
   position:absolute;width:14px;height:14px;background:#fff;transform:rotate(45deg);
 }
@@ -423,7 +432,7 @@ input{font-family:inherit}
   max-height:calc(100vh - 24px);flex-direction:column;overflow:hidden;
 }
 .markpop.on{display:flex}
-.markpop .in{overflow-y:auto;-webkit-overflow-scrolling:touch}
+.markpop .in{overflow-y:auto}
 .markpop.noarrow .arrow{display:none}
 .markpop .arrow{position:absolute;width:12px;height:12px;background:#fff;transform:rotate(45deg)}
 .markpop.below .arrow{top:-7px;border-left:1px solid var(--keisen);border-top:1px solid var(--keisen)}
