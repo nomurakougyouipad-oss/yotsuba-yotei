@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#1c4b34">
 <title>よつば週間予定|集計</title>
 
@@ -28,6 +28,12 @@
   --don:#f0eee6;      /* 土日の帯 */
 }
 *{box-sizing:border-box}
+/* iPhoneのノッチ(カメラの出っぱり)やホームバーで隠れる幅です。
+   縦向きや、ノッチのない端末では 0 になるので、見た目は変わりません */
+:root{
+  --sal:env(safe-area-inset-left,0px);
+  --sar:env(safe-area-inset-right,0px);
+}
 html,body{margin:0;padding:0}
 body{
   background:var(--kinari);font-family:'Noto Sans JP',sans-serif;color:var(--moji);
@@ -70,9 +76,13 @@ button{font-family:inherit;white-space:nowrap;cursor:pointer}
 
 /* ---- 表 ---- */
 .wrap{overflow:auto;max-height:calc(100vh - 150px);max-height:calc(100dvh - 150px);background:#fff}
-/* スマホを横向きにしたとき。縦が狭いので、表に使える高さを増やします */
+/* スマホを横向きにしたとき。縦が狭いので、表に使える高さを増やします。
+   あわせて、ノッチ(カメラの出っぱり)で隠れる幅ぶんを内側に寄せます */
 @media (max-width:1023px) and (orientation:landscape){
-  .wrap{max-height:calc(100dvh - 96px)}
+  .wrap{max-height:calc(100dvh - 96px);margin-left:var(--sal);margin-right:var(--sar)}
+  .head{padding-left:calc(16px + var(--sal));padding-right:calc(16px + var(--sar))}
+  .obi{padding-left:calc(14px + var(--sal));padding-right:calc(14px + var(--sar))}
+  /* 表の枠ごと寄せてあるので、左右に固定した列も枠のはしで止まります */
 }
 table{border-collapse:separate;border-spacing:0;font-size:13px;width:max-content;min-width:100%}
 th,td{border-right:1px solid var(--keisen2);border-bottom:1px solid var(--keisen2);padding:4px 3px}

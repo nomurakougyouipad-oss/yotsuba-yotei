@@ -34,6 +34,12 @@
   --kyo:#eef3ee;
 }
 *{box-sizing:border-box}
+/* iPhoneのノッチ(カメラの出っぱり)やホームバーで隠れる幅です。
+   縦向きや、ノッチのない端末では 0 になるので、見た目は変わりません */
+:root{
+  --sal:env(safe-area-inset-left,0px);
+  --sar:env(safe-area-inset-right,0px);
+}
 html,body{margin:0;padding:0}
 body{
   background:var(--kinari);font-family:'Noto Sans JP',sans-serif;color:var(--moji);
@@ -275,6 +281,22 @@ input{font-family:inherit}
   }
   .tabs button .i{font-size:18px}
   .tabs button .l{font-size:13px}
+
+  /* =============== ノッチ(カメラの出っぱり)よけ ===============
+     iPhoneを横向きにすると、画面の左右どちらかがカメラの出っぱりに隠れます。
+     隠れる幅ぶんだけ、中身を内側に寄せます。                          */
+  .head{padding-left:calc(14px + var(--sal));padding-right:calc(14px + var(--sar))}
+  .obi{padding-left:calc(14px + var(--sal));padding-right:calc(14px + var(--sar))}
+  .weeknav{padding-left:calc(10px + var(--sal));padding-right:calc(10px + var(--sar))}
+  .mebar{padding-left:calc(14px + var(--sal));padding-right:calc(14px + var(--sar))}
+  .cats{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
+  .daypills{padding-left:calc(10px + var(--sal));padding-right:calc(10px + var(--sar))}
+  .filterbar{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
+  .days{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
+  .plan{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
+  .pick{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
+  .nodata{padding-left:calc(16px + var(--sal));padding-right:calc(16px + var(--sar))}
+  .tabs{padding-left:calc(4px + var(--sal));padding-right:calc(4px + var(--sar))}
 }
 </style>
 </head>

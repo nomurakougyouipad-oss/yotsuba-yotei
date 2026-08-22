@@ -32,6 +32,12 @@
   --kyo:#eef3ee;         /* きょうの列 */
 }
 *{box-sizing:border-box}
+/* iPhoneのノッチ(カメラの出っぱり)やホームバーで隠れる幅です。
+   縦向きや、ノッチのない端末では 0 になるので、見た目は変わりません */
+:root{
+  --sal:env(safe-area-inset-left,0px);
+  --sar:env(safe-area-inset-right,0px);
+}
 html,body{margin:0;padding:0}
 body{
   background:var(--ji);font-family:'Noto Sans JP',sans-serif;color:var(--moji);
@@ -625,6 +631,11 @@ input{font-family:inherit}
   font-size:14px;font-weight:700;z-index:50;display:none;max-width:90vw;text-align:center;
 }
 .toast.on{display:block}
+/* ノッチで隠れる幅を測るための、目に見えない箱です(JavaScriptから読みます) */
+#safeprobe{
+  position:fixed;top:0;left:0;width:0;height:0;visibility:hidden;pointer-events:none;
+  padding-left:var(--sal);padding-right:var(--sar);
+}
 
 /* =====================================================================
    PC(1024px以上)= 一覧性優先。画面いっぱい・行を詰める
@@ -796,9 +807,10 @@ input{font-family:inherit}
     grid-column:2;grid-row:2;align-self:center;
     justify-content:flex-end;padding:0 10px 0 6px;
   }
-  /* 絞り込みは折り返さず1行に。件数の文だけを中で折り返します */
-  #body.plan .filterbar{flex-wrap:nowrap}
-  #body.plan .filterbar .fmsg{flex:1 1 auto;min-width:0;line-height:1.3;text-align:right}
+  /* 絞り込みのボタンは1行に。件数の文は、入りきらないときだけ下の行に回します
+     (日本語は途中で折り返さない設定にしているため、無理に押し込むと切れてしまいます) */
+  #body.plan .filterbar{flex-wrap:wrap;row-gap:2px;column-gap:8px}
+  #body.plan .filterbar .fmsg{flex:1 1 100%;text-align:right;line-height:1.25}
   /* ボタンが行の高さいっぱいに伸びないようにします */
   #body.plan .cats{align-items:center}
   #body.plan .gridwrap{grid-column:1 / -1;grid-row:3}
@@ -819,6 +831,40 @@ input{font-family:inherit}
 
   /* ---- メンバー一覧は、横に広いので2列に ---- */
   .wlist{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:10px 12px}
+
+  /* =============== ノッチ(カメラの出っぱり)よけ ===============
+     iPhoneを横向きにすると、画面の左右どちらかがカメラの出っぱりに隠れます。
+     隠れる幅ぶんだけ、中身を内側に寄せます。背景は端まで伸ばしたままにして、
+     帯が途中で切れて見えないようにしています。                            */
+  .head{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
+  .obi{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
+  .weeknav{padding-left:calc(10px + var(--sal));padding-right:calc(10px + var(--sar))}
+  .tabs{padding-left:calc(4px + var(--sal));padding-right:calc(4px + var(--sar))}
+
+  /* 予定を組むタブ(カテゴリは左はし、絞り込みは右はしに置いてあります) */
+  #body.plan .cats{padding-left:calc(10px + var(--sal))}
+  #body.plan .filterbar{padding-right:calc(10px + var(--sar))}
+  #body.plan .legend{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
+  /* そのほかのタブ(チェック・配信・メンバー)は、まとめて内側に寄せます */
+  #body:not(.plan){padding-left:var(--sal);padding-right:var(--sar)}
+
+  /* 表。スクロールする枠ごと内側に寄せます。こうすると、左に固定している
+     工事名の列は枠の左はし(=ノッチの外側)で止まります。枠の内側に余白を
+     取るやり方だと、ブラウザによって固定位置の数え方が違うため避けました */
+  .gridwrap{margin-left:var(--sal);margin-right:var(--sar)}
+
+  /* 名前を選ぶシート */
+  .sheet .sh{padding-left:calc(14px + var(--sal));padding-right:calc(14px + var(--sar))}
+  .sheet .sb{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
+  .sheet .sf{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
+
+  /* 吹き出し。置く場所はJavaScript側でも避けています */
+  .jobpop,.markpop,.daypop,.pastpop{
+    max-width:calc(100vw - 24px - var(--sal) - var(--sar));
+  }
+  /* まん中に出すものは、ノッチのぶんだけ中心をずらします */
+  .pastpop{margin-left:calc((var(--sal) - var(--sar)) / 2)}
+  .toast{margin-left:calc((var(--sal) - var(--sar)) / 2);max-width:calc(90vw - var(--sal) - var(--sar))}
 }
 </style>
 </head>
@@ -850,6 +896,7 @@ input{font-family:inherit}
 
 <div class="mask" id="mask"></div>
 <div class="sheet" id="sheet"></div>
+<div id="safeprobe"></div>
 <div class="popmask" id="popmask"></div>
 <div class="jobpop" id="jobpop"></div>
 <div class="markmask" id="markmask"></div>
@@ -893,6 +940,15 @@ input{font-family:inherit}
 
   var $ = function (id) { return document.getElementById(id); };
   var isPC = function () { return window.matchMedia('(min-width:1024px)').matches; };
+
+  /** iPhoneのノッチで隠れる左右の幅(px)。縦向きやノッチのない端末では 0 です。
+      目に見えない箱に余白として描かせ、その幅を読み取っています。 */
+  function safeLR() {
+    var p = $('safeprobe');
+    if (!p) return { l: 0, r: 0 };
+    var cs = window.getComputedStyle(p);
+    return { l: parseFloat(cs.paddingLeft) || 0, r: parseFloat(cs.paddingRight) || 0 };
+  }
   var esc = function (s) {
     return String(s).replace(/[&<>"']/g, function (c) {
       return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
@@ -1691,9 +1747,10 @@ input{font-family:inherit}
     pop.classList.toggle('noarrow', noarrow);
     pop.style.top = top + 'px';
 
-    // 左ぞろえ。右にはみ出すなら左へ寄せます
-    var left = Math.min(a.left, window.innerWidth - pw - pad);
-    left = Math.max(pad, left);
+    // 左ぞろえ。右にはみ出すなら左へ寄せます(ノッチの幅も避けます)
+    var sf = safeLR();
+    var left = Math.min(a.left, window.innerWidth - pw - pad - sf.r);
+    left = Math.max(pad + sf.l, left);
     pop.style.left = left + 'px';
 
     // 三角は工事名の真ん中を指します
@@ -2176,8 +2233,9 @@ input{font-family:inherit}
     pop.style.top = top + 'px';
 
     // チップの中心に合わせ、はみ出す分だけ寄せます
+    var sf = safeLR();
     var left = a.left + a.width / 2 - pw / 2;
-    left = Math.max(pad, Math.min(left, window.innerWidth - pw - pad));
+    left = Math.max(pad + sf.l, Math.min(left, window.innerWidth - pw - pad - sf.r));
     pop.style.left = left + 'px';
 
     var ar = pop.querySelector('.arrow');
@@ -3002,11 +3060,12 @@ input{font-family:inherit}
     var pw = pop.offsetWidth, pad = 12;
     var ph2 = pop.offsetHeight;
     pop.style.top = Math.max(pad, Math.min(a.bottom + 8, window.innerHeight - ph2 - pad)) + 'px';
-    var left = Math.min(a.left, window.innerWidth - pw - pad);
-    pop.style.left = Math.max(pad, left) + 'px';
+    var sf = safeLR();
+    var left = Math.min(a.left, window.innerWidth - pw - pad - sf.r);
+    pop.style.left = Math.max(pad + sf.l, left) + 'px';
     var ar = pop.querySelector('.arrow');
     if (ar) {
-      var cx = a.left + a.width / 2 - Math.max(pad, left) - 6;
+      var cx = a.left + a.width / 2 - Math.max(pad + sf.l, left) - 6;
       ar.style.left = Math.max(12, Math.min(pw - 24, cx)) + 'px';
     }
   }
