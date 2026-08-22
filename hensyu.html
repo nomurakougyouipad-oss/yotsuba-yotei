@@ -105,6 +105,44 @@ input{font-family:inherit}
 .obi.on{display:block}
 .obi.offline{background:#4a4844;color:#fff}
 .obi.master{background:#fbe9e5;color:var(--aka);border-bottom:1px solid #e5b8ae}
+/* 最終編集の帯。だれが・いつ触ったかを、いつでも見えるところに出します */
+.obi.last{
+  background:#fff;color:var(--usu2);border-bottom:1px solid var(--keisen);
+  font-size:12px;font-weight:700;text-align:left;padding:5px 14px;
+  align-items:center;gap:10px;
+}
+.obi.last.on{display:flex}
+.obi.last .who{color:var(--midori);font-weight:900}
+.obi.last .when{color:var(--moji);font-weight:900}
+.obi.last .none4{color:var(--usu);font-weight:700}
+.obi.last .me2{
+  margin-left:auto;flex-shrink:0;min-height:26px;padding:0 10px;border-radius:13px;
+  border:1px solid var(--keisen);background:#fff;color:var(--usu2);
+  font-size:12px;font-weight:700;
+}
+
+/* 名前を決める吹き出し */
+.namemask{position:fixed;inset:0;background:rgba(43,42,38,.45);z-index:48;display:none}
+.namemask.on{display:block}
+.namepop{
+  position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:49;
+  width:420px;max-width:calc(100vw - 24px);max-height:90vh;max-height:90dvh;display:none;
+  flex-direction:column;background:#fff;border-radius:14px;overflow:hidden;
+  box-shadow:0 16px 44px rgba(43,42,38,.35);
+}
+.namepop.on{display:flex}
+.namepop .nh{background:var(--midori);color:#fff;padding:14px 16px}
+.namepop .nh .t3{font-size:17px;font-weight:900}
+.namepop .nh .s3{font-size:12px;opacity:.85;margin-top:2px;line-height:1.6}
+.namepop .nb{padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.namepop input{
+  width:100%;min-height:52px;border:1.5px solid var(--midori);border-radius:10px;
+  padding:0 12px;font-size:18px;font-family:inherit;font-weight:700;background:#fff;
+}
+.namepop .hint5{font-size:12px;color:var(--usu);line-height:1.7}
+.namepop .nf{display:flex;gap:10px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--keisen)}
+.namepop .nf button{min-height:48px;padding:0 20px;border-radius:10px;border:1px solid var(--keisen);background:#fff;font-size:15px;font-weight:700;color:var(--usu2)}
+.namepop .nf .ok4{background:var(--midori);color:#fff;border-color:var(--midori);font-weight:900}
 
 /* 週ナビ */
 .weeknav{
@@ -911,6 +949,7 @@ input{font-family:inherit}
   <div class="obi master" id="obiMembers">
     メンバーが登録されていません。下の「👥 メンバー」から登録してください
   </div>
+  <div class="obi last" id="obiLast"></div>
 
   <div id="body"></div>
 
@@ -929,6 +968,8 @@ input{font-family:inherit}
 <div class="jobpop" id="jobpop"></div>
 <div class="markmask" id="markmask"></div>
 <div class="markpop" id="markpop"></div>
+<div class="namemask" id="namemask"></div>
+<div class="namepop" id="namepop"></div>
 <div class="pastmask" id="pastmask"></div>
 <div class="pastpop" id="pastpop"></div>
 <div class="daymask" id="daymask"></div>
@@ -1040,6 +1081,12 @@ input{font-family:inherit}
 
     // PC版ツールバー
     $('btnXls').addEventListener('click', exportExcel);
+    $('namemask').addEventListener('click', function () {
+      // 名前がもう決まっているときだけ、外側を押して閉じられます
+      if (YY.getOperator()) closeNamePop();
+    });
+    // まだ名前を決めていなければ、最初に1回だけ聞きます
+    if (!YY.getOperator()) setTimeout(function () { openNamePop(true); }, 600);
     $('btnLine').addEventListener('click', function (e) {
       e.stopPropagation();
       openDayPop($('btnLine'));
@@ -1156,6 +1203,8 @@ input{font-family:inherit}
     var b = $('body');
     b.innerHTML = '';
     b.className = (S.tab === 'plan') ? 'plan' : '';
+    drawLastEdit();
+
     if (S.tab === 'check') renderCheck(b);
     else if (S.tab === 'line') renderLine(b);
     else if (S.tab === 'members') renderMembers(b);
@@ -3079,83 +3128,213 @@ input{font-family:inherit}
   }
 
   /* =================================================================
+     最終編集の帯と、保存に残す名前
+       名前はこの端末に覚えます(localStorage)。
+       保存するたび yotei/weeks/{週}/updatedAt・updatedBy が更新されます。
+     ================================================================= */
+
+  /** ミリ秒 → '8/22 14:30' */
+  function stamp(ms) {
+    if (!ms) return '';
+    var d = new Date(ms);
+    var p = function (n) { return (n < 10 ? '0' : '') + n; };
+    return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  /** 最終編集の帯を書き替えます */
+  function drawLastEdit() {
+    var e = $('obiLast');
+    // メンバータブは週と関係がないので出しません
+    if (S.tab === 'members') { e.classList.remove('on'); return; }
+
+    var w = S.week || {};
+    var me = YY.getOperator();
+    var body = w.updatedAt
+      ? '✏ 最終編集 <span class="when">' + esc(stamp(w.updatedAt)) + '</span> ' +
+        '<span class="who">' + esc(w.updatedBy || '—') + '</span>'
+      : '<span class="none4">✏ この週は、まだ編集されていません</span>';
+
+    e.innerHTML = body +
+      '<button class="me2" id="btnMe">👤 ' + esc(me || '名前を入れる') + '</button>';
+    e.classList.add('on');
+    $('btnMe').addEventListener('click', function () { openNamePop(false); });
+  }
+
+  /** 名前を決める吹き出し。first=true は、まだ名前が無いときの初回です */
+  function openNamePop(first) {
+    var pop = $('namepop');
+    pop.innerHTML =
+      '<div class="nh"><div class="t3">👤 あなたの名前</div>' +
+      '<div class="s3">予定を保存したときに「だれが編集したか」として残ります。' +
+      'この端末に覚えるので、次からは聞きません</div></div>' +
+      '<div class="nb">' +
+      '<input id="nameIn" maxlength="' + YY.OPERATOR_MAX + '" placeholder="例:松高">' +
+      '<div class="hint5">' + YY.OPERATOR_MAX + '文字まで。空にすると「事務所」で残ります</div>' +
+      '</div>' +
+      '<div class="nf">' +
+      (first ? '' : '<button id="nameCancel">やめる</button>') +
+      '<button class="ok4" id="nameOk">決定</button></div>';
+
+    var inp = $('nameIn');
+    inp.value = YY.getOperator();
+    var ok = function () {
+      YY.setOperator(inp.value);
+      closeNamePop();
+      drawLastEdit();
+      var v = YY.getOperator();
+      toast(v ? '「' + v + '」で保存します' : '「事務所」で保存します');
+    };
+    $('nameOk').addEventListener('click', ok);
+    inp.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') { ev.preventDefault(); ok(); }
+      if (ev.key === 'Escape' && !first) { ev.preventDefault(); closeNamePop(); }
+    });
+    var c = $('nameCancel');
+    if (c) c.addEventListener('click', closeNamePop);
+
+    $('namemask').classList.add('on');
+    pop.classList.add('on');
+    setTimeout(function () { inp.focus(); inp.select(); }, 50);
+  }
+
+  function closeNamePop() {
+    $('namepop').classList.remove('on');
+    $('namemask').classList.remove('on');
+  }
+
+  /* =================================================================
      PC版ツールバー
      ================================================================= */
 
-  /** セルの中身を1つの文字列に。「◎松平・井谷・本山(3名)」 */
-  function cellText(jobKey, dateKey) {
-    var c = YY.displayCell(S.week, jobKey, dateKey);
-    if (!c.count) return '';
-    var names = c.rows.map(YY.nameWithMarks).concat(c.extras).join('・');
-    return names + '(' + c.count + '名)';
+  /* --- 元請けに送る Excel -------------------------------------------
+     用途:1週間ぶんの工事件名とメンバーを元請けに渡し、
+           元請けが各現場の入場申請に使います。
+       ・① 東レ工事だけ
+       ・その週にメンバーが入っている工事だけ(空の工事は出しません)
+       ・名前は省略せず全員
+       ・期間は、いま画面に出ている1週間
+     「休み」と「余」は社内の話なので入れません。
+     ------------------------------------------------------------------- */
+
+  /** 出す工事(① 東レ工事 かつ その週に1人でも入っているもの) */
+  function exportJobs() {
+    var used = usedJobIds();
+    var days = YY.weekDates(S.monday);
+    return YY.jobsByCat(1, used).filter(function (j) {
+      return days.some(function (d) { return YY.displayCell(S.week, j.id, d).count > 0; });
+    });
   }
 
-  /** 画面に出ているとおりの表を、行の配列にします */
-  function gridRows() {
+  function ymdText(dateKey) {
+    var d = YY.parseKey(dateKey);
+    return d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate();
+  }
+
+  /** 1枚目「週間表」:工事 × 月〜日。名前は「・」でつなぎます */
+  function sheetWeek(jobs) {
     var days = YY.weekDates(S.monday);
-    var head = ['工事'];
+    var now = new Date();
+    var p = function (n) { return (n < 10 ? '0' : '') + n; };
+
+    var rows = [];
+    rows.push(['よつば建設工業 週間予定(① 東レ工事)']);
+    rows.push(['期間', ymdText(days[0]) + ' 〜 ' + ymdText(days[6])]);
+    rows.push(['作成', now.getFullYear() + '/' + (now.getMonth() + 1) + '/' + now.getDate() +
+      ' ' + p(now.getHours()) + ':' + p(now.getMinutes())]);
+    rows.push([]);
+
+    var head = ['工事名', '注番'];
     days.forEach(function (d, i) {
       var dt = YY.parseKey(d);
       head.push(YY.DOW[i] + ' ' + (dt.getMonth() + 1) + '/' + dt.getDate());
     });
-    var rows = [head];
+    rows.push(head);
 
-    // 休み行
-    var rest = ['休み'];
-    days.forEach(function (d) { rest.push(cellText(YY.REST_KEY, d)); });
-    rows.push(rest);
-
-    // 余 行(計算で出しているぶん)
-    var yo = ['🟡 余'];
-    days.forEach(function (d) {
-      var free = YY.computeDay(S.week, d).free;
-      yo.push(free.length ? free.join('・') + '(' + free.length + '名)' : '');
+    jobs.forEach(function (j) {
+      var r = [j.name, j.no || ''];
+      days.forEach(function (d) {
+        var c = YY.displayCell(S.week, j.id, d);
+        if (!c.count) { r.push(''); return; }
+        var names = c.rows.map(YY.nameWithMarks).concat(c.extras);
+        r.push(names.join('・') + '(' + c.count + '名)');
+      });
+      rows.push(r);
     });
-    rows.push(yo);
+    return rows;
+  }
 
-    // 工事(いま選んでいるカテゴリのとおり)
-    var used = usedJobIds();
-    var cats = (S.cat === 'all') ? YY.CATEGORIES.order : [S.cat];
-    cats.forEach(function (cat) {
-      var jobs = YY.jobsByCat(cat, used);
-      if (!jobs.length) return;
-      if (S.cat === 'all') rows.push([YY.CATEGORIES.labels[cat]]);
+  /**
+   * 2枚目「入場者一覧」:1人1行。
+   * 入場申請にそのまま使えるよう、日ごと・工事ごとに1人ずつ並べます。
+   * この形なら、何人いても名前が欄からはみ出して切れることがありません。
+   */
+  function sheetList(jobs) {
+    var days = YY.weekDates(S.monday);
+    var rows = [['日付', '曜日', '工事名', '注番', '氏名', '区分', 'しるし']];
+    days.forEach(function (d, i) {
+      var ymd = ymdText(d);
       jobs.forEach(function (j) {
-        var r = [j.name + (j.no ? '(' + j.no + ')' : '')];
-        days.forEach(function (d) { r.push(cellText(j.id, d)); });
-        rows.push(r);
+        var c = YY.displayCell(S.week, j.id, d);
+        if (!c.count) return;
+        c.rows.forEach(function (x) {
+          rows.push([ymd, YY.DOW[i], j.name, j.no || '', x.name,
+            x.coop ? '協力会社' : '自社', x.mark || '']);
+        });
+        c.extras.forEach(function (x) {
+          rows.push([ymd, YY.DOW[i], j.name, j.no || '', x, '名簿外', '']);
+        });
       });
     });
     return rows;
   }
 
+  function csvText(rows) {
+    return rows.map(function (r) {
+      return r.map(function (c) {
+        var v = String(c == null ? '' : c);
+        return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+      }).join(',');
+    }).join('\r\n');
+  }
+
   function exportExcel() {
-    var lb = YY.weekLabel(S.monday);
-    var rows = gridRows();
-    var name = 'よつば_週間予定_' + S.monday + '_' + lb.range.replace('〜', '-');
+    var jobs = exportJobs();
+    if (!jobs.length) {
+      toast('この週は、① 東レ工事にメンバーが入っていません');
+      return;
+    }
+    var days = YY.weekDates(S.monday);
+    var week = sheetWeek(jobs);
+    var list = sheetList(jobs);
+    var name = 'よつば_週間予定_東レ工事_' + days[0] + '_' + days[6];
 
     if (typeof XLSX === 'undefined') {
-      var csv = rows.map(function (r) {
-        return r.map(function (c) {
-          var s = String(c == null ? '' : c);
-          return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-        }).join(',');
-      }).join('\r\n');
-      download(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }), name + '.csv');
+      // Excel の部品を読めない環境では、2枚ぶんを1つの CSV につなげて出します
+      var csv = csvText(week) + '\r\n\r\n' + csvText(list);
+      download(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }), name + '.csv');
       toast('Excelの部品を読み込めなかったので、CSVで書き出しました');
       return;
     }
 
-    var ws = XLSX.utils.aoa_to_sheet(rows);
-    var w = [{ wch: 30 }];
-    for (var i = 0; i < 7; i++) w.push({ wch: 24 });
-    ws['!cols'] = w;
-    ws['!freeze'] = { xSplit: 1, ySplit: 1 };
-
     var wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, lb.range.replace(/\//g, '.'));
+
+    var ws1 = XLSX.utils.aoa_to_sheet(week);
+    var w1 = [{ wch: 32 }, { wch: 12 }];
+    for (var i = 0; i < 7; i++) w1.push({ wch: 30 });
+    ws1['!cols'] = w1;
+    ws1['!freeze'] = { xSplit: 2, ySplit: 5 };
+    XLSX.utils.book_append_sheet(wb, ws1, '週間表');
+
+    var ws2 = XLSX.utils.aoa_to_sheet(list);
+    ws2['!cols'] = [{ wch: 11 }, { wch: 5 }, { wch: 32 }, { wch: 12 },
+      { wch: 14 }, { wch: 10 }, { wch: 6 }];
+    ws2['!freeze'] = { xSplit: 0, ySplit: 1 };
+    ws2['!autofilter'] = { ref: XLSX.utils.encode_range({
+      s: { r: 0, c: 0 }, e: { r: list.length - 1, c: 6 } }) };
+    XLSX.utils.book_append_sheet(wb, ws2, '入場者一覧');
+
     XLSX.writeFile(wb, name + '.xlsx');
-    toast('Excelに書き出しました');
+    toast('東レ工事 ' + jobs.length + '件 / のべ ' + (list.length - 1) + '人日を書き出しました');
   }
 
   function download(blob, filename) {

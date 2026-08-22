@@ -26,6 +26,9 @@
   --aka:#b3402e;
   --kyo:#eef3ee;
   --don:#f0eee6;      /* 土日の帯 */
+  --sei:#e7eff7;      /* 請求済みの行 */
+  --sei2:#c9dcee;     /* 請求済みの罫線 */
+  --sei3:#2c5f8f;     /* 請求済みの文字 */
 }
 *{box-sizing:border-box}
 /* iPhoneのノッチ(カメラの出っぱり)やホームバーで隠れる幅です。
@@ -117,6 +120,40 @@ th.tot,td.tot{
   background:var(--kyo);border-left:2px solid var(--midori);font-weight:900;color:var(--midori);
 }
 thead th.tot{z-index:4}
+/* 右端その2:全期間の総合計。月計はそのぶん内側にずらします */
+th.tot2,td.tot2{
+  position:sticky;right:0;z-index:2;min-width:62px;text-align:center;
+  background:var(--don);border-left:1px solid var(--keisen);font-weight:900;color:var(--usu2);
+}
+th.tot,td.tot{right:62px}
+thead th.tot2{z-index:4}
+td.tot2.wait{color:#c2bcab;font-weight:400}
+tfoot td.tot2{background:var(--usu2);color:#fff;font-size:15px}
+
+/* --- 請求済み ------------------------------------------------
+   工事は月をまたぐので「工事ごと」ではなく「工事×月ごと」に持ちます。
+   ✓ を押すと、いま画面に出ている月のぶんだけを切り替えます。   */
+td.jn .jnrow{display:flex;align-items:flex-start;gap:8px}
+td.jn .jnrow .txt{flex:1;min-width:0;cursor:pointer}
+.bill{
+  flex-shrink:0;width:26px;height:26px;border-radius:7px;padding:0;
+  border:1.5px solid var(--keisen);background:#fff;color:#e2ddd0;
+  font-size:14px;font-weight:900;line-height:1;
+}
+.bill:hover{border-color:var(--sei3);color:var(--sei3)}
+.bill.on{background:var(--sei3);border-color:var(--sei3);color:#fff}
+tr.billed td{background:var(--sei)}
+tr.billed td.we{background:#dde8f3}
+tr.billed td.jn{background:var(--sei);border-right-color:var(--sei2)}
+tr.billed td.tot{background:#d6e6f4;color:var(--sei3)}
+tr.billed td.tot2{background:#dbe7f2;color:var(--sei3)}
+tr.billed td.jn .n{color:var(--sei3)}
+.seitag{
+  display:inline-block;margin-left:6px;font-size:10px;font-weight:900;
+  color:#fff;background:var(--sei3);border-radius:8px;padding:1px 6px;vertical-align:2px;
+}
+.mnav .bsum{font-size:13px;color:var(--sei3);font-weight:700}
+.mnav .bsum b{font-size:16px;font-weight:900;margin:0 3px}
 /* 最下部の合計行 */
 tfoot td{
   position:sticky;bottom:0;z-index:3;background:#f3f1e9;
@@ -208,6 +245,7 @@ td.jn:hover .n{text-decoration:underline}
   <button id="next">▶</button>
   <label><input type="checkbox" id="showAll"> 予定のない工事も出す</label>
   <div class="sum" id="sum"></div>
+  <div class="bsum" id="bsum"></div>
 </div>
 
 <div class="obi warn" id="obiWarn"></div>
@@ -238,7 +276,10 @@ td.jn:hover .n{text-decoration:underline}
     showAll: false,
     data: null,     // monthCounts の結果
     weeks: null,    // その月にかかる週データ(内訳で使います)
-    allWeeks: null, // 全期間ぶん。内訳をはじめて開いたときに1回だけ読みます
+    allWeeks: null, // 全期間ぶん。総合計の列と内訳で使います
+    allTotals: null,// 全期間の工事別合計 { 工事id: 人工 }
+    billed: {},     // その月の請求済み { 工事id: true }
+    unwatchBilled: null,
     detail: null,   // いま開いている内訳
     loading: false
   };
@@ -292,18 +333,52 @@ td.jn:hover .n{text-decoration:underline}
     S.loading = true;
 
     closeDetail();
+
+    // その月の請求済みを見張ります(ほかの端末で切り替えても、すぐ反映されます)
+    if (S.unwatchBilled) S.unwatchBilled();
+    S.billed = {};
+    $('bsum').textContent = '';
+    S.unwatchBilled = YY.subscribeBilled(S.y, S.m, function (b) {
+      S.billed = b || {};
+      if (S.data) draw();
+    });
+
     S.allWeeks = null;      // 月を動かしたら、全期間ぶんも読み直します
+    S.allTotals = null;
     YY.loadMonthWeeks(S.y, S.m).then(function (weeks) {
       S.loading = false;
       S.weeks = weeks;
       S.data = YY.monthCounts(weeks, S.y, S.m);
       $('obiWarn').classList.remove('on');
       draw();
+      loadAllTotals();      // 総合計の列は、あとから埋めます
     }).catch(function (e) {
       S.loading = false;
       $('obiWarn').textContent = '読み込めませんでした:' + (e && e.message ? e.message : e);
       $('obiWarn').classList.add('on');
       $('body').innerHTML = '<div class="msg">読み込めませんでした</div>';
+    });
+  }
+
+  /**
+   * 全期間の工事別合計。表の右端「総合計」の列に使います。
+   * 月の表より重い(全部の週を読みます)ので、月の表を出したあとに読んで、
+   * 読めたところで描き直します。内訳の吹き出しとも読み込みを使い回します。
+   */
+  function loadAllTotals() {
+    if (S.allWeeks) {
+      S.allTotals = YY.jobTotalsAll(S.allWeeks);
+      draw();
+      return;
+    }
+    var y = S.y, m = S.m;
+    YY.loadAllWeeks().then(function (all) {
+      if (S.y !== y || S.m !== m) return;      // 待つ間に月が変わったら捨てます
+      S.allWeeks = all;
+      S.allTotals = YY.jobTotalsAll(all);
+      draw();
+    }).catch(function (e) {
+      console.warn('[集計] 全期間を読めませんでした:', e);
     });
   }
 
@@ -328,6 +403,15 @@ td.jn:hover .n{text-decoration:underline}
     $('sum').innerHTML = S.m + '月の総人工 <b>' + d.total + '</b> 人工' +
       '<span style="color:var(--usu);font-weight:400"> / 工事 ' + d.jobIds.length + '件</span>';
 
+    // 請求済みの件数と人工(この月に予定がある工事だけを数えます)
+    var bn = 0, bt = 0;
+    d.jobIds.forEach(function (id) {
+      if (S.billed[id]) { bn++; bt += (d.jobTotal[id] || 0); }
+    });
+    $('bsum').innerHTML = d.jobIds.length
+      ? '請求済み <b>' + bn + '</b>/ ' + d.jobIds.length + '件(' + bt + '人工)'
+      : '';
+
     if (!ids.length) {
       $('body').innerHTML = '<div class="msg">' +
         (YY.master.jobs.length
@@ -345,19 +429,32 @@ td.jn:hover .n{text-decoration:underline}
       h.push('<th class="' + cls + '">' + day.getDate() +
         '<span class="w">' + YY.DOW[YY.dowIndex(dt)] + '</span></th>');
     });
-    h.push('<th class="tot">月計</th></tr></thead><tbody>');
+    h.push('<th class="tot">' + S.m + '月計</th>');
+    h.push('<th class="tot2" title="この工事の全期間の合計">総合計</th></tr></thead><tbody>');
 
     ids.forEach(function (id) {
       var lab = YY.jobLabel(id);
-      h.push('<tr><td class="jn" data-job="' + esc(id) + '" title="クリックで内訳を見る">' +
-        '<div class="n">' + esc(lab.name) + '</div>' +
-        (lab.sub ? '<div class="no">' + esc(lab.sub) + '</div>' : '') + '</td>');
+      var bi = !!S.billed[id];
+      h.push('<tr' + (bi ? ' class="billed"' : '') + '><td class="jn"><div class="jnrow">' +
+        '<button class="bill' + (bi ? ' on' : '') + '" data-bill="' + esc(id) + '" title="' +
+          (bi ? '請求済み。押すと未請求にもどします' : '押すと請求済みにします') +
+          '(' + S.y + '年' + S.m + '月ぶん)">✓</button>' +
+        '<div class="txt" data-job="' + esc(id) + '" title="クリックで内訳を見る">' +
+        '<div class="n">' + esc(lab.name) +
+          (bi ? '<span class="seitag">請求済</span>' : '') + '</div>' +
+        (lab.sub ? '<div class="no">' + esc(lab.sub) + '</div>' : '') +
+        '</div></div></td>');
       d.dates.forEach(function (dt) {
         var n = (d.byJob[id] || {})[dt] || 0;
         var cls = 'd' + (YY.isWeekend(dt) ? ' we' : '') + (n ? '' : ' zero');
         h.push('<td class="' + cls + '">' + (n ? n : '·') + '</td>');
       });
-      h.push('<td class="tot">' + (d.jobTotal[id] || 0) + '</td></tr>');
+      h.push('<td class="tot">' + (d.jobTotal[id] || 0) + '</td>');
+      // 総合計はあとから読みます。読めるまでは「…」を出します
+      h.push(S.allTotals
+        ? '<td class="tot2">' + (S.allTotals[id] || 0) + '</td>'
+        : '<td class="tot2 wait">…</td>');
+      h.push('</tr>');
     });
 
     h.push('</tbody><tfoot><tr><td class="jn">' + S.m + '月の総人工</td>');
@@ -366,13 +463,33 @@ td.jn:hover .n{text-decoration:underline}
       var cls = 'd' + (YY.isWeekend(dt) ? ' we' : '') + (n ? '' : ' zero');
       h.push('<td class="' + cls + '">' + (n ? n : '·') + '</td>');
     });
-    h.push('<td class="tot">' + d.total + '</td></tr></tfoot></table></div>');
+    h.push('<td class="tot">' + d.total + '</td>');
+    // 合計行の総合計は、いま出ている工事ぶんの全期間合計です
+    h.push(S.allTotals
+      ? '<td class="tot2">' + ids.reduce(function (a, id) { return a + (S.allTotals[id] || 0); }, 0) + '</td>'
+      : '<td class="tot2 wait">…</td>');
+    h.push('</tr></tfoot></table></div>');
 
     $('body').innerHTML = h.join('');
 
     // 工事名をクリックすると内訳が出ます
-    Array.prototype.forEach.call($('body').querySelectorAll('td.jn[data-job]'), function (td) {
+    Array.prototype.forEach.call($('body').querySelectorAll('.txt[data-job]'), function (td) {
       td.addEventListener('click', function () { openDetail(td.getAttribute('data-job')); });
+    });
+
+    // ✓ を押すと、いま出ている月ぶんの請求済みを切り替えます
+    Array.prototype.forEach.call($('body').querySelectorAll('.bill'), function (b) {
+      b.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var id = b.getAttribute('data-bill');
+        b.disabled = true;
+        YY.setBilled(S.y, S.m, id, !S.billed[id]).catch(function (err) {
+          b.disabled = false;
+          $('obiWarn').textContent = '請求済みを切り替えられませんでした:' +
+            (err && err.message ? err.message : err);
+          $('obiWarn').classList.add('on');
+        });
+      });
     });
   }
 
@@ -517,24 +634,29 @@ td.jn:hover .n{text-decoration:underline}
 
   function sheetRows() {
     var d = S.data, ids = rowsToShow();
-    var head = ['工事', '注番'];
+    var head = ['請求', '工事', '注番'];
     d.dates.forEach(function (dt) {
       head.push(YY.parseKey(dt).getDate() + '(' + YY.DOW[YY.dowIndex(dt)] + ')');
     });
-    head.push('月計');
+    head.push(S.m + '月計');
+    head.push('総合計');
 
     var rows = [head];
     ids.forEach(function (id) {
       var lab = YY.jobLabel(id);
-      var r = [lab.name, lab.sub || ''];
+      var r = [S.billed[id] ? '済' : '', lab.name, lab.sub || ''];
       d.dates.forEach(function (dt) { r.push((d.byJob[id] || {})[dt] || 0); });
       r.push(d.jobTotal[id] || 0);
+      r.push(S.allTotals ? (S.allTotals[id] || 0) : '');
       rows.push(r);
     });
 
-    var last = [S.m + '月の総人工', ''];
+    var last = ['', S.m + '月の総人工', ''];
     d.dates.forEach(function (dt) { last.push(d.dayTotal[dt] || 0); });
     last.push(d.total);
+    last.push(S.allTotals
+      ? ids.reduce(function (a, id) { return a + (S.allTotals[id] || 0); }, 0)
+      : '');
     rows.push(last);
     return rows;
   }
@@ -560,11 +682,11 @@ td.jn:hover .n{text-decoration:underline}
 
     var ws = XLSX.utils.aoa_to_sheet(rows);
     // 列幅:工事名は広め、日付は狭く
-    var w = [{ wch: 28 }, { wch: 10 }];
+    var w = [{ wch: 5 }, { wch: 28 }, { wch: 10 }];
     S.data.dates.forEach(function () { w.push({ wch: 4 }); });
-    w.push({ wch: 7 });
+    w.push({ wch: 8 }, { wch: 8 });
     ws['!cols'] = w;
-    ws['!freeze'] = { xSplit: 2, ySplit: 1 };
+    ws['!freeze'] = { xSplit: 3, ySplit: 1 };
 
     var wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, S.y + '年' + S.m + '月');

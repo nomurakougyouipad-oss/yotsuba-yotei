@@ -77,6 +77,13 @@
         }
       },
 
+      "billed": {
+        "$ym": {
+          ".validate": "$ym.matches(/^[0-9]{4}-[0-9]{2}$/)",
+          "$jobId": { ".validate": "newData.isBoolean() && newData.val() === true" }
+        }
+      },
+
       "meta": {
         "lastWeek": { ".validate": "newData.isString() && newData.val().matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/)" }
       }

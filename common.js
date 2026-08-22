@@ -61,6 +61,7 @@
      予定データのキーもこの id です。
      ------------------------------------------------------------------- */
   var JOBS_PATH = 'yotei/jobs';
+  var BILLED_PATH = 'yotei/billed';
   var JOB_NAME_MAX = 60;
   var JOB_NO_MAX = 30;
   // 「前に使った工事」パネルが、何週さかのぼって探すか
@@ -73,8 +74,34 @@
   // ほかのしるしに意味は持たせません(集計では1人=1として数えます)
   var MARKS = ['', '◎', '△', '☆', '✕'];
   var MARK_MAX = 4;
-  var OPERATOR = '事務所';                    // updatedBy に入れる名前
+  var OPERATOR = '事務所';                    // 名前をまだ決めていないときの既定
+  var OPERATOR_KEY = 'yotsuba.yotei.operator';
+  var OPERATOR_MAX = 20;                     // ルールの updatedBy と同じ上限
   var SAVE_DEBOUNCE_MS = 300;
+
+  /* ===================================================================
+     ■ 保存するときに残す名前(この端末に覚えます)
+     =================================================================== */
+
+  /** この端末で決めた名前。決めていなければ空文字 */
+  function getOperator() {
+    try {
+      return String(window.localStorage.getItem(OPERATOR_KEY) || '').trim().slice(0, OPERATOR_MAX);
+    } catch (e) { return ''; }
+  }
+
+  /** 名前を決め直します。空にすると忘れます。実際に入った文字を返します */
+  function setOperator(name) {
+    var v = String(name == null ? '' : name).replace(/\s+/g, ' ').trim().slice(0, OPERATOR_MAX);
+    try {
+      if (v) window.localStorage.setItem(OPERATOR_KEY, v);
+      else window.localStorage.removeItem(OPERATOR_KEY);
+    } catch (e) { /* 保存できない端末でも、動きは止めません */ }
+    return v;
+  }
+
+  /** updatedBy に入れる名前 */
+  function operatorName() { return getOperator() || OPERATOR; }
 
   /* ===================================================================
      ■ Firebase 接続
@@ -931,7 +958,7 @@
     var writes = Object.keys(byWeek).map(function (week) {
       var patch = byWeek[week];
       patch.updatedAt = firebase.database.ServerValue.TIMESTAMP;
-      patch.updatedBy = OPERATOR;
+      patch.updatedBy = operatorName();
       return yoteiDb.ref('yotei/weeks/' + week).update(patch);
     });
 
@@ -958,8 +985,60 @@
     return yoteiDb.ref('yotei/weeks/' + mondayKey).update({
       show: Object.keys(out).length ? out : null,
       updatedAt: firebase.database.ServerValue.TIMESTAMP,
-      updatedBy: OPERATOR
+      updatedBy: operatorName()
     });
+  }
+
+  /* ===================================================================
+     ■ 請求済み(月ごと)
+       yotei/billed/{YYYY-MM}/{工事id} = true
+       工事は月をまたぐので、「工事ごと」ではなく「工事×月ごと」に持ちます。
+       集計ページは月ごとの表なので、画面に出ているものとそのまま対応します。
+     =================================================================== */
+
+  function ymKey(y, m) { return y + '-' + (m < 10 ? '0' + m : m); }
+
+  /** その月の請求済み { 工事id: true } を見張ります。止める関数を返します */
+  function subscribeBilled(y, m, cb) {
+    initFirebase();
+    var ref = yoteiDb.ref(BILLED_PATH + '/' + ymKey(y, m));
+    var h = ref.on('value',
+      function (s) { cb(s.val() || {}); },
+      function (e) { console.warn('[common] 請求済みを読めません:', e); cb({}); });
+    return function () { ref.off('value', h); };
+  }
+
+  /** その月の1件を、請求済み(true)/未請求(false)に切り替えます */
+  function setBilled(y, m, jobId, on) {
+    initFirebase();
+    if (!validKey(jobId)) return Promise.reject(new Error('工事idが正しくありません'));
+    var o = {};
+    o[jobId] = on ? true : null;          // false のときは消します
+    return yoteiDb.ref(BILLED_PATH + '/' + ymKey(y, m)).update(o);
+  }
+
+  /**
+   * 全期間の、工事ごとの総人工 { 工事id: 人工 }
+   * 同じ日が複数の週ノードに入っていても二重に数えないよう、日付でまとめます。
+   */
+  function jobTotalsAll(weeks) {
+    var out = {}, seen = {};
+    Object.keys(weeks || {}).forEach(function (wk) {
+      var assign = (weeks[wk] || {}).assign || {};
+      Object.keys(assign).forEach(function (jobId) {
+        if (jobId === REST_KEY) return;          // 休みは人工ではありません
+        var days = assign[jobId] || {};
+        Object.keys(days).forEach(function (d) {
+          var k = jobId + '|' + d;
+          if (seen[k]) return;
+          seen[k] = true;
+          var c = days[d] || {};
+          var n = Object.keys(c.members || {}).length + (c.extras || []).length;
+          if (n) out[jobId] = (out[jobId] || 0) + n;
+        });
+      });
+    });
+    return out;
   }
 
   /** その週に人が入っている工事id { id: true } */
@@ -1387,6 +1466,14 @@
     cleanMark: cleanMark,
     cellItems: cellItems,
     DOW: DOW,
+
+    // 保存するときの名前
+    getOperator: getOperator, setOperator: setOperator, operatorName: operatorName,
+    OPERATOR_MAX: OPERATOR_MAX,
+
+    // 請求済み(月ごと)
+    subscribeBilled: subscribeBilled, setBilled: setBilled,
+    ymKey: ymKey, jobTotalsAll: jobTotalsAll,
 
     // 接続
     init: initFirebase,
