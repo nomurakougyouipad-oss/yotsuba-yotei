@@ -62,6 +62,8 @@
      ------------------------------------------------------------------- */
   var JOBS_PATH = 'yotei/jobs';
   var BILLED_PATH = 'yotei/billed';
+  var LOGS_PATH = 'yotei/logs';
+  var LOG_KEEP = 100;                        // 1つの週に残す履歴の件数
   var JOB_NAME_MAX = 60;
   var JOB_NO_MAX = 30;
   // 「前に使った工事」パネルが、何週さかのぼって探すか
@@ -870,7 +872,11 @@
     initFirebase();
     var ref = yoteiDb.ref('yotei/weeks/' + mondayKey);
     var handler = ref.on('value',
-      function (snap) { cb(normalizeWeek(snap.val())); },
+      function (snap) {
+        var w = normalizeWeek(snap.val());
+        weekCache[mondayKey] = w;      // 履歴の「変更前」を出すのに使います
+        cb(w);
+      },
       function (err) {
         console.warn('[common] 週の購読に失敗:', err);
         cb(normalizeWeek(null));
@@ -899,13 +905,21 @@
    * セル1つを保存します。300ms まとめてから書きます。
    * cell = { members:{名前:{mark}}, extras:[文字列] } / 空にするときは null
    */
-  function saveCell(mondayKey, jobKey, dateKey, cell) {
+  function saveCell(mondayKey, jobKey, dateKey, cell, kind) {
     initFirebase();
     if (!validKey(jobKey) || !validKey(dateKey)) {
       return Promise.reject(new Error('保存できない工事キーまたは日付です'));
     }
-    pending[mondayKey + '|' + jobKey + '|' + dateKey] =
-      { week: mondayKey, job: jobKey, date: dateKey, cell: cleanCell(cell) };
+    var pk = mondayKey + '|' + jobKey + '|' + dateKey;
+    // 同じマスに続けて書いても、いちばん最初の「変更前」だけを控えます
+    if (!pending[pk]) {
+      pending[pk] = { before: cellNames(cellOf(weekCache[mondayKey], jobKey, dateKey)) };
+    }
+    pending[pk].week = mondayKey;
+    pending[pk].job = jobKey;
+    pending[pk].date = dateKey;
+    pending[pk].cell = cleanCell(cell);
+    pending[pk].kind = kind || 'メンバー変更';
 
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(flushSaves, SAVE_DEBOUNCE_MS);
@@ -947,12 +961,21 @@
       return Promise.resolve();
     }
 
-    var byWeek = {};
+    var byWeek = {}, logRows = [];
     keys.forEach(function (k) {
       var p = pending[k];
       delete pending[k];
       byWeek[p.week] = byWeek[p.week] || {};
       byWeek[p.week]['assign/' + p.job + '/' + p.date] = p.cell;   // null なら削除
+
+      // 中身が変わったマスだけ、履歴に残します
+      var after = cellNames(p.cell);
+      if (after !== p.before) {
+        logRows.push({
+          week: p.week, kind: p.kind, job: p.job, jn: jobLabel(p.job).name,
+          date: p.date, from: p.before, to: after
+        });
+      }
     });
 
     var writes = Object.keys(byWeek).map(function (week) {
@@ -963,6 +986,7 @@
     });
 
     return Promise.all(writes).then(function () {
+      logRows.forEach(function (r) { addLog(r.week, r); });
       waiters.forEach(function (w) { w.resolve(); });
     }).catch(function (e) {
       console.warn('[common] 保存に失敗:', e);
@@ -1060,6 +1084,88 @@
       });
     });
     return out;
+  }
+
+  /* ===================================================================
+     ■ 編集履歴(yotei/logs/{週}/{自動キー})
+       だれが・いつ・どのマスを・どう変えたかを1件ずつ残します。
+       名前は「文字列」で持ちます。あとで工事名やメンバー名が変わっても、
+       そのときの記録がそのまま読めるようにするためです。
+       1件およそ200バイト。1つの週につき最新100件だけ残します。
+     =================================================================== */
+
+  var weekCache = {};        // 見張っている週の中身(「変更前」を出すのに使います)
+  var logCount = {};         // { 週: 件数 } この端末が数えているぶん
+
+  /** セルの中身を「◎松高・野村」の形にします。空なら '(なし)' */
+  function cellNames(cell) {
+    if (!cell) return '(なし)';
+    var ms = cell.members || {};
+    var list = Object.keys(ms).sort(function (a, b) {
+      return ((ms[a] || {}).ord || 0) - ((ms[b] || {}).ord || 0);
+    }).map(function (n) { return ((ms[n] || {}).mark || '') + n; });
+    (cell.extras || []).forEach(function (x) { list.push(x); });
+    if (!list.length) return '(なし)';
+    var t = list.join('・');
+    return t.length > 300 ? t.slice(0, 299) + '…' : t;
+  }
+
+  /**
+   * 履歴を1件残します。
+   * 履歴が書けなくても予定の保存は止めません(あくまで控えなので)。
+   */
+  function addLog(week, row) {
+    initFirebase();
+    if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(String(week || ''))) return Promise.resolve();
+    var e = {
+      at: firebase.database.ServerValue.TIMESTAMP,
+      by: operatorName(),
+      kind: String(row.kind || 'メンバー変更').slice(0, 20)
+    };
+    var lim = { job: 40, jn: 60, date: 10, from: 300, to: 300, note: 120 };
+    Object.keys(lim).forEach(function (k) {
+      if (row[k]) e[k] = String(row[k]).slice(0, lim[k]);
+    });
+    var ref = yoteiDb.ref(LOGS_PATH + '/' + week);
+    return ref.push(e)
+      .then(function () { trimLogs(week); })
+      .catch(function (err) { console.warn('[common] 履歴を残せませんでした:', err); });
+  }
+
+  /** 100件を超えたぶんの古い記録を消します。件数はこの端末で数えます */
+  function trimLogs(week) {
+    var ref = yoteiDb.ref(LOGS_PATH + '/' + week);
+    var after = function (n) {
+      logCount[week] = n;
+      if (n <= LOG_KEEP) return;
+      // 自動キーは古い順に並ぶので、頭から溢れたぶんを消します
+      ref.orderByKey().limitToFirst(n - LOG_KEEP).once('value').then(function (s) {
+        var del = {};
+        s.forEach(function (c) { del[c.key] = null; });
+        if (Object.keys(del).length) ref.update(del);
+        logCount[week] = LOG_KEEP;
+      }).catch(function () { /* 消せなくても動きは止めません */ });
+    };
+    if (typeof logCount[week] === 'number') { after(logCount[week] + 1); return; }
+    // その週にはじめて書いたときだけ、1回数えます
+    ref.once('value')
+      .then(function (s) { after(s.numChildren()); })
+      .catch(function () { /* 数えられなくても動きは止めません */ });
+  }
+
+  /** その週の履歴を新しい順で読みます */
+  function loadLogs(week) {
+    initFirebase();
+    return readOnce(yoteiDb.ref(LOGS_PATH + '/' + week).orderByKey().limitToLast(LOG_KEEP))
+      .then(function (s) {
+        var out = [];
+        s.forEach(function (c) { var v = c.val() || {}; v.id = c.key; v.week = week; out.push(v); });
+        return out.reverse();          // 新しい順
+      })
+      .catch(function (e) {
+        console.warn('[common] 履歴を読めませんでした:', e);
+        return [];
+      });
   }
 
   /** その週に人が入っている工事id { id: true } */
@@ -1495,6 +1601,9 @@
     // 請求済み(月ごと)
     subscribeBilled: subscribeBilled, setBilled: setBilled,
     ymKey: ymKey, jobTotalsAll: jobTotalsAll, jobFirstDates: jobFirstDates,
+
+    // 編集履歴
+    addLog: addLog, loadLogs: loadLogs, cellNames: cellNames, LOG_KEEP: LOG_KEEP,
 
     // 接続
     init: initFirebase,

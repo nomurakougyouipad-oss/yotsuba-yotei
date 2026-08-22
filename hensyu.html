@@ -117,6 +117,58 @@ input{font-family:inherit}
 .obi.last .who,.obi.last .when{color:var(--aka);font-weight:900;font-size:15px}
 .obi.last .none4{color:var(--aka);opacity:.85}
 .obi.last .me2{
+  flex-shrink:0;min-height:28px;padding:0 12px;border-radius:14px;
+  border:1px solid #e5b8ae;background:#fff;color:var(--aka);
+  font-size:12px;font-weight:700;
+}
+
+/* 編集履歴 */
+.logmask{position:fixed;inset:0;background:rgba(43,42,38,.45);z-index:50;display:none}
+.logmask.on{display:block}
+.logpop{
+  position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:51;
+  margin-left:calc((var(--sal) - var(--sar)) / 2);
+  width:620px;max-width:calc(100vw - 24px - var(--sal) - var(--sar));
+  max-height:90vh;max-height:90dvh;display:none;
+  flex-direction:column;background:#fff;border-radius:14px;overflow:hidden;
+  box-shadow:0 16px 44px rgba(43,42,38,.35);
+}
+.logpop.on{display:flex}
+.logpop .lh{background:var(--aka);color:#fff;padding:12px 16px;display:flex;align-items:center;gap:10px}
+.logpop .lh .t4{font-size:17px;font-weight:900}
+.logpop .lh .s4{font-size:12px;opacity:.9}
+.logpop .lh .x2{
+  margin-left:auto;min-height:34px;padding:0 12px;border-radius:8px;
+  border:1px solid rgba(255,255,255,.6);background:transparent;color:#fff;
+  font-size:13px;font-weight:700;
+}
+.logpop .lb{overflow-y:auto;overscroll-behavior:contain;padding:0 0 8px}
+.logpop .wk{
+  position:sticky;top:0;z-index:1;background:var(--kinari);
+  border-bottom:1px solid var(--keisen);padding:7px 16px;
+  font-size:13px;font-weight:900;color:var(--midori);
+}
+.logpop .wk span{color:var(--usu);font-weight:700;margin-left:6px;font-size:11px}
+.logpop .lg{padding:9px 16px;border-bottom:1px solid var(--keisen2)}
+.logpop .lg .l1{font-size:12px;color:var(--usu2);font-weight:700}
+.logpop .lg .l1 b{color:var(--moji);font-weight:900}
+.logpop .lg .l1 .kd{
+  margin-left:6px;font-size:10px;font-weight:900;color:#fff;background:var(--usu);
+  border-radius:8px;padding:1px 6px;
+}
+.logpop .lg .l1 .kd.cell{background:var(--midori)}
+.logpop .lg .l2{font-size:14px;font-weight:900;margin-top:3px;word-break:break-all}
+.logpop .lg .l2 .dt{color:var(--usu2);font-weight:700;margin-right:6px}
+.logpop .lg .l3{font-size:13px;line-height:1.7;margin-top:2px;word-break:break-all}
+.logpop .lg .l3 .fr{color:var(--usu)}
+.logpop .lg .l3 .ar{color:var(--usu);margin:0 5px}
+.logpop .lg .l3 .to{color:var(--midori);font-weight:700}
+.logpop .lg .note2{font-size:13px;margin-top:2px;color:var(--usu2)}
+.logpop .lf{padding:12px 16px;border-top:1px solid var(--keisen);display:flex;gap:10px;align-items:center}
+.logpop .lf button{min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--keisen);background:#fff;font-size:14px;font-weight:700;color:var(--usu2)}
+.logpop .lf .cnt5{margin-left:auto;font-size:12px;color:var(--usu)}
+.logpop .none5{padding:40px 20px;text-align:center;color:var(--usu);font-size:15px;line-height:1.9}
+.obi.last .hist{
   margin-left:auto;flex-shrink:0;min-height:28px;padding:0 12px;border-radius:14px;
   border:1px solid #e5b8ae;background:#fff;color:var(--aka);
   font-size:12px;font-weight:700;
@@ -983,6 +1035,8 @@ input{font-family:inherit}
 <div class="jobpop" id="jobpop"></div>
 <div class="markmask" id="markmask"></div>
 <div class="markpop" id="markpop"></div>
+<div class="logmask" id="logmask"></div>
+<div class="logpop" id="logpop"></div>
 <div class="namemask" id="namemask"></div>
 <div class="namepop" id="namepop"></div>
 <div class="pastmask" id="pastmask"></div>
@@ -1007,6 +1061,7 @@ input{font-family:inherit}
     online: true,
     yoOpen: false,       // PCの「余」行をひらいているか
     unsubWeek: null,
+    log: null,           // 履歴の画面を開いている間の中身
     billed: {},          // 請求済み { 'YYYY-MM': { 工事id: true } }
     unsubBilled: [],     // 見張りを止める関数(週がまたぐと2つになります)
     prevMonday: null,    // 先週の月曜(コピー元)
@@ -1098,6 +1153,10 @@ input{font-family:inherit}
 
     // PC版ツールバー
     $('btnXls').addEventListener('click', exportExcel);
+    $('logmask').addEventListener('click', closeLogPop);
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && S.log) { e.preventDefault(); closeLogPop(); }
+    });
     $('namemask').addEventListener('click', function () {
       // 名前がもう決まっているときだけ、外側を押して閉じられます
       if (YY.getOperator()) closeNamePop();
@@ -1661,6 +1720,10 @@ input{font-family:inherit}
       hide.textContent = j.active ? '表から隠す' : '表に出す';
       hide.addEventListener('click', function () {
         YY.setJobActive(jobId, !j.active).then(function () {
+          YY.addLog(S.monday, {
+            kind: '工事の編集', job: jobId, jn: j.name,
+            note: j.active ? '表から隠しました' : '表に出しました'
+          });
           toast(j.active ? '表から隠しました' : '表に出しました');
           closeJobPop();
         }).catch(function (e) { toast('切り替えできませんでした:' + e.message); });
@@ -1717,11 +1780,24 @@ input{font-family:inherit}
       var cat = S.editCat;
       closeJobPop();
       if (isNew) {
-        YY.addJob(nm, cat, no, st).then(function () {
+        YY.addJob(nm, cat, no, st).then(function (id) {
+          YY.addLog(S.monday, {
+            kind: '工事の追加', job: id, jn: nm,
+            note: YY.CATEGORIES.labels[cat] + (no ? ' / 注番 ' + no : '') + (st ? ' / 開始 ' + st : '')
+          });
           toast('「' + nm + '」を追加しました');
         }).catch(function (e) { toast('追加できませんでした:' + e.message); });
       } else {
+        var was = YY.master.jobById[jobId] || {};
+        var diff = [];
+        if (was.name !== nm) diff.push('名前 ' + (was.name || '') + ' → ' + nm);
+        if ((was.no || '') !== no) diff.push('注番 ' + (was.no || '(なし)') + ' → ' + (no || '(なし)'));
+        if ((was.start || '') !== st) diff.push('開始 ' + (was.start || '(なし)') + ' → ' + (st || '(なし)'));
+        if (was.category !== cat) diff.push('分類 ' + (YY.CATEGORIES.labels[was.category] || '') + ' → ' + YY.CATEGORIES.labels[cat]);
         YY.updateJob(jobId, { name: nm, no: no, start: st, category: cat }).then(function () {
+          if (diff.length) {
+            YY.addLog(S.monday, { kind: '工事の編集', job: jobId, jn: nm, note: diff.join(' / ') });
+          }
           toast('工事を直しました');
         }).catch(function (e) { toast('直せませんでした:' + e.message); });
       }
@@ -1757,6 +1833,10 @@ input{font-family:inherit}
 
       closeJobPop();
       YY.deleteJob(jobId).then(function (res) {
+        YY.addLog(S.monday, {
+          kind: '工事の削除', job: jobId, jn: name,
+          note: res.cells ? '予定 ' + res.cells + 'マスも消しました' : '予定は入っていませんでした'
+        });
         toast('「' + name + '」を削除しました' +
           (res.cells ? '(予定 ' + res.cells + 'マスも消しました)' : ''));
       }).catch(function (e) {
@@ -1830,7 +1910,7 @@ input{font-family:inherit}
       var c = fromLastWeek(jobId, d);
       c.dropped.forEach(function (x) { dropped[x] = true; });
       if (!c.count) return;
-      jobs.push(YY.saveCell(S.monday, jobId, d, { members: c.members, extras: c.extras }));
+      jobs.push(YY.saveCell(S.monday, jobId, d, { members: c.members, extras: c.extras }, '前週コピー'));
       copied++;
     });
 
@@ -3199,6 +3279,10 @@ input{font-family:inherit}
     var n = Object.keys(P.checked).length;
     closePastPop();
     YY.setWeekShow(S.monday, next).then(function () {
+      YY.addLog(S.monday, {
+        kind: '表に出す工事',
+        note: n ? n + '件を今週の表に出しました' : '今週出す工事をなしにしました'
+      });
       toast(n ? n + '件を今週の表に出しました' : '今週出す工事をなしにしました');
     }).catch(function (e) {
       toast('できませんでした:' + (e && e.message ? e.message : ''));
@@ -3233,8 +3317,10 @@ input{font-family:inherit}
       : '<span class="none4">✏ この週は、まだ編集されていません</span>';
 
     e.innerHTML = body +
+      '<button class="hist" id="btnHist">🕘 履歴</button>' +
       '<button class="me2" id="btnMe">👤 ' + esc(me || '名前を入れる') + '</button>';
     e.classList.add('on');
+    $('btnHist').addEventListener('click', openLogPop);
     $('btnMe').addEventListener('click', function () { openNamePop(false); });
   }
 
@@ -3278,6 +3364,129 @@ input{font-family:inherit}
   function closeNamePop() {
     $('namepop').classList.remove('on');
     $('namemask').classList.remove('on');
+  }
+
+  /* =================================================================
+     編集履歴
+       いま見ている週から何週かぶんを読み、週ごとに分けて新しい順に出します。
+       全部の週を一度に読むと重いので、まず6週ぶん読んで、
+       足りなければ「さらに前を見る」で6週ずつ足します。
+     ================================================================= */
+
+  var LOG_STEP = 6;                 // 一度に読む週の数
+
+  function openLogPop() {
+    S.log = { weeks: [], rows: {}, span: 0, loading: false };
+    $('logmask').classList.add('on');
+    $('logpop').classList.add('on');
+    drawLogPop();
+    loadMoreLogs();
+  }
+
+  function closeLogPop() {
+    S.log = null;
+    $('logpop').classList.remove('on');
+    $('logmask').classList.remove('on');
+  }
+
+  /** さらに LOG_STEP 週ぶん、古いほうへ読み進めます */
+  function loadMoreLogs() {
+    var L = S.log; if (!L || L.loading) return;
+    L.loading = true;
+    drawLogPop();
+
+    var add = [];
+    for (var i = 0; i < LOG_STEP; i++) add.push(YY.addWeeks(S.monday, -(L.span + i)));
+    L.span += LOG_STEP;
+
+    Promise.all(add.map(function (wk) {
+      return YY.loadLogs(wk).then(function (rows) { return { wk: wk, rows: rows }; });
+    })).then(function (list) {
+      if (S.log !== L) return;              // 待っている間に閉じられた
+      list.forEach(function (x) {
+        if (L.weeks.indexOf(x.wk) < 0) L.weeks.push(x.wk);
+        L.rows[x.wk] = x.rows;
+      });
+      L.loading = false;
+      drawLogPop();
+    }).catch(function () {
+      if (S.log !== L) return;
+      L.loading = false;
+      drawLogPop();
+    });
+  }
+
+  /** 1787376578264 → '8/22 16:23' */
+  function logTime(ms) {
+    if (!ms) return '';
+    var d = new Date(ms);
+    var p = function (n) { return (n < 10 ? '0' : '') + n; };
+    return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  function drawLogPop() {
+    var L = S.log; if (!L) return;
+    var pop = $('logpop');
+
+    var h = ['<div class="lh"><div><div class="t4">🕘 編集履歴</div>' +
+      '<div class="s4">だれが・いつ・どこを変えたかの記録です</div></div>' +
+      '<button class="x2" id="logClose">✕ 閉じる</button></div>'];
+
+    h.push('<div class="lb" id="logBody">');
+    var total = 0;
+    L.weeks.forEach(function (wk) {
+      var rows = L.rows[wk] || [];
+      if (!rows.length) return;
+      total += rows.length;
+      var lb = YY.weekLabel(wk);
+      h.push('<div class="wk">' + lb.range + ' の週<span>' + rows.length + '件</span></div>');
+      rows.forEach(function (r) {
+        h.push(logRowHTML(r));
+      });
+    });
+    if (!total) {
+      h.push('<div class="none5">' + (L.loading
+        ? '読み込んでいます…'
+        : 'この' + L.span + '週ぶんには、記録がありませんでした') + '</div>');
+    }
+    h.push('</div>');
+
+    var from = YY.weekLabel(YY.addWeeks(S.monday, -(L.span - 1)));
+    h.push('<div class="lf">' +
+      '<button id="logMore"' + (L.loading ? ' disabled' : '') + '>' +
+      (L.loading ? '読み込み中…' : '⏪ さらに' + LOG_STEP + '週前まで') + '</button>' +
+      '<span class="cnt5">' + from.range + ' の週まで / ' + total + '件</span></div>');
+
+    var keep = (pop.querySelector('.lb') || {}).scrollTop || 0;
+    pop.innerHTML = h.join('');
+    var b = pop.querySelector('.lb');
+    if (b && keep) b.scrollTop = keep;
+    $('logClose').addEventListener('click', closeLogPop);
+    $('logMore').addEventListener('click', loadMoreLogs);
+  }
+
+  /** 履歴1件の見た目 */
+  function logRowHTML(r) {
+    var cell = (r.from !== undefined || r.to !== undefined);
+    var h = ['<div class="lg">'];
+
+    h.push('<div class="l1"><b>' + esc(logTime(r.at)) + '</b> ' +
+      esc(r.by || '—') +
+      '<span class="kd' + (cell ? ' cell' : '') + '">' + esc(r.kind || '') + '</span></div>');
+
+    var head = [];
+    if (r.date) head.push('<span class="dt">' + esc(YY.dayLabel(r.date)) + '</span>');
+    if (r.jn) head.push(esc(r.jn));
+    if (head.length) h.push('<div class="l2">' + head.join('') + '</div>');
+
+    if (cell) {
+      h.push('<div class="l3"><span class="fr">' + esc(r.from || '(なし)') + '</span>' +
+        '<span class="ar">→</span><span class="to">' + esc(r.to || '(なし)') + '</span></div>');
+    }
+    if (r.note) h.push('<div class="note2">' + esc(r.note) + '</div>');
+
+    h.push('</div>');
+    return h.join('');
   }
 
   /* =================================================================

@@ -77,6 +77,27 @@
         }
       },
 
+      "logs": {
+        "$week": {
+          ".validate": "$week.matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/)",
+          "$id": {
+            ".validate": "newData.hasChildren(['at','by','kind'])",
+
+            "at":   { ".validate": "newData.isNumber()" },
+            "by":   { ".validate": "newData.isString() && newData.val().length <= 20" },
+            "kind": { ".validate": "newData.isString() && newData.val().length <= 20" },
+            "job":  { ".validate": "newData.isString() && newData.val().length <= 40" },
+            "jn":   { ".validate": "newData.isString() && newData.val().length <= 60" },
+            "date": { ".validate": "newData.isString() && newData.val().matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/)" },
+            "from": { ".validate": "newData.isString() && newData.val().length <= 300" },
+            "to":   { ".validate": "newData.isString() && newData.val().length <= 300" },
+            "note": { ".validate": "newData.isString() && newData.val().length <= 120" },
+
+            "$other": { ".validate": false }
+          }
+        }
+      },
+
       "billed": {
         "$ym": {
           ".validate": "$ym.matches(/^[0-9]{4}-[0-9]{2}$/)",
