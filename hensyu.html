@@ -9,7 +9,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;600;700;900&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 
 <style>
 /* ============ 配色(日報アプリと共通トーン) ============ */
@@ -3231,8 +3230,8 @@ input{font-family:inherit}
   }
 
   /**
-   * Excel の列幅(wch)の目安。全角は2文字ぶんとして数えます。
-   * 幅を実測で決めるので、あとから手で直さなくても名前や工事名が収まります。
+   * Excel の列幅の目安。全角は2文字ぶんとして数えます。
+   * 中身を実測して幅を決めるので、あとから手で直さなくても収まります。
    */
   function wchOf(str) {
     var n = 0;
@@ -3247,92 +3246,196 @@ input{font-family:inherit}
     return w + 3;                                        // 余白ぶん
   }
 
+  /* --- Excel の部品(ExcelJS)------------------------------------------
+     罫線・背景色・折り返し・縦位置を書き出せるのが、前に使っていた
+     SheetJS 無料版との違いです(あちらは書式が落ちてしまいます)。
+     1MBほどあるので、あらかじめ読まず、書き出すときに読みます。
+     ------------------------------------------------------------------- */
+  var EXCELJS_URL = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+  var exceljsLoading = null;
+
+  function loadExcelJS() {
+    if (window.ExcelJS) return Promise.resolve(window.ExcelJS);
+    if (exceljsLoading) return exceljsLoading;
+    exceljsLoading = new Promise(function (ok, ng) {
+      var sc = document.createElement('script');
+      sc.src = EXCELJS_URL;
+      sc.onload = function () {
+        if (window.ExcelJS) ok(window.ExcelJS);
+        else { exceljsLoading = null; ng(new Error('部品が見つかりません')); }
+      };
+      sc.onerror = function () { exceljsLoading = null; ng(new Error('読み込めません')); };
+      document.head.appendChild(sc);
+    });
+    return exceljsLoading;
+  }
+
+  /* 色と罫線。画面の配色に合わせています */
+  var XC = {
+    midori: 'FF1C4B34',      // 見出しの背景
+    midori2: 'FF2F6B4C',     // 見出しのうち土日
+    keisen: 'FFD9D3C4',      // 罫線
+    donichi: 'FFF2EFE4',     // 土日の列
+    shukei: 'FFEEF3EE',      // いちばん下の集計行
+    usu: 'FF8A877C'
+  };
+  function xBox() {
+    var t = { style: 'thin', color: { argb: XC.keisen } };
+    return { top: t, left: t, bottom: t, right: t };
+  }
+
   /**
-   * 1枚目「週間表」:工事 × 月〜日。
-   *
-   * 1マスに全員を詰め込むと、Excel では欄からはみ出して読めません。
-   * SheetJS の無料版では折り返し(wrapText)を書き出せないことを確かめたので
-   * (列幅と行の高さは書き出せますが、折り返しの指定だけが落ちます)、
-   * 【1人1行】に並べ、工事名と注番はその工事のぶんだけ縦に結合します。
-   * この形なら折り返しがいらないので、どのExcelでも必ず全員見えます。
-   *
-   *   工事名                     注番    月 8/17   火 8/18
-   *   ┌ C-5 各所駆動ベルト改造    12345   山下      山下
-   *   │                                  津田      坂口
-   *   └                                  松高海
-   *
-   * 戻り値 { rows, merges, cols }
+   * 元請けに送るブックを組み立てます。
+   *   1枚目「週間表」 … 工事 × 月〜日。1マスに複数名を折り返しで入れ、罫線で囲みます
+   *   2枚目「入場者一覧」… 1人1行。入場申請にそのまま使えます
    */
-  function sheetWeek(jobs) {
+  function buildBook(E, jobs) {
     var days = YY.weekDates(S.monday);
     var now = new Date();
     var p = function (n) { return (n < 10 ? '0' : '') + n; };
+    var wb = new E.Workbook();
+    wb.creator = 'よつば建設工業';
+    wb.created = now;
 
-    var rows = [];
-    rows.push(['よつば建設工業 週間予定(① 東レ工事)']);
-    rows.push(['期間', ymdText(days[0]) + ' 〜 ' + ymdText(days[6])]);
-    rows.push(['作成', now.getFullYear() + '/' + (now.getMonth() + 1) + '/' + now.getDate() +
-      ' ' + p(now.getHours()) + ':' + p(now.getMinutes())]);
-    rows.push([]);
-
-    var head = ['工事名', '注番'];
-    days.forEach(function (d, i) {
-      var dt = YY.parseKey(d);
-      head.push(YY.DOW[i] + ' ' + (dt.getMonth() + 1) + '/' + dt.getDate());
-    });
-    rows.push(head);
-
-    var merges = [];
-    var allNames = [];
-    var dayCount = days.map(function () { return 0; });
-
+    /* ===== 先に中身を集めて、列幅を決めます ===== */
+    var blocks = [], allNames = [];
     jobs.forEach(function (j) {
-      // 曜日ごとの名前を先に集めて、いちばん多い日に行数を合わせます
       var cols = days.map(function (d) {
         var c = YY.displayCell(S.week, j.id, d);
         return c.rows.map(YY.nameWithMarks).concat(c.extras);
       });
       var n = cols.reduce(function (m, x) { return Math.max(m, x.length); }, 0);
       if (!n) return;
-
-      var top = rows.length;
-      for (var i = 0; i < n; i++) {
-        var r = [i === 0 ? j.name : '', i === 0 ? (j.no || '') : ''];
-        cols.forEach(function (list) { r.push(list[i] || ''); });
-        rows.push(r);
-      }
-      // 工事名と注番は、その工事のぶんだけ縦につなげます
-      if (n > 1) {
-        merges.push({ s: { r: top, c: 0 }, e: { r: top + n - 1, c: 0 } });
-        merges.push({ s: { r: top, c: 1 }, e: { r: top + n - 1, c: 1 } });
-      }
-      cols.forEach(function (list, k) {
-        dayCount[k] += list.length;
-        list.forEach(function (x) { allNames.push(x); });
-      });
+      cols.forEach(function (list) { list.forEach(function (x) { allNames.push(x); }); });
+      blocks.push({ job: j, cols: cols, n: n });
     });
 
-    // いちばん下に、日ごとの人数
-    rows.push([]);
-    var foot = ['日ごとの人数', ''];
-    dayCount.forEach(function (n) { foot.push(n ? n + '名' : ''); });
-    rows.push(foot);
+    var jobW = Math.min(46, maxWch(blocks.map(function (b) { return b.job.name; }), 18));
+    var noW = maxWch(blocks.map(function (b) { return b.job.no || ''; }), 6);
+    var nameW = maxWch(allNames, 9);
 
-    // 列幅は中身の実測で決めます(あとから手で直さなくて済むように)
-    var cols = [
-      { wch: maxWch(jobs.map(function (j) { return j.name; }).concat(['日ごとの人数']), 16) },
-      { wch: maxWch(jobs.map(function (j) { return j.no || ''; }).concat(['注番']), 6) }
-    ];
-    var nameW = maxWch(allNames.concat(head.slice(2)), 8);
-    for (var k = 0; k < 7; k++) cols.push({ wch: nameW });
+    /* ===== 1枚目:週間表 ===== */
+    var ws = wb.addWorksheet('週間表', {
+      views: [{ state: 'frozen', xSplit: 2, ySplit: 5 }],
+      pageSetup: {
+        paperSize: 9, orientation: 'landscape',          // A4 よこ
+        fitToPage: true, fitToWidth: 1, fitToHeight: 0,  // よこ1枚に収めます
+        margins: { left: .3, right: .3, top: .4, bottom: .4, header: .2, footer: .2 }
+      }
+    });
+    ws.getColumn(1).width = jobW;
+    ws.getColumn(2).width = noW;
+    for (var k = 0; k < 7; k++) ws.getColumn(3 + k).width = nameW;
 
-    return { rows: rows, merges: merges, cols: cols };
+    // 表題
+    ws.mergeCells(1, 1, 1, 9);
+    var t1 = ws.getCell(1, 1);
+    t1.value = 'よつば建設工業 週間予定(① 東レ工事)';
+    t1.font = { bold: true, size: 14, color: { argb: XC.midori } };
+    t1.alignment = { vertical: 'middle' };
+    ws.getRow(1).height = 26;
+
+    var dow0 = YY.DOW[0], dow6 = YY.DOW[6];
+    ws.getCell(2, 1).value = '期間';
+    ws.getCell(2, 2).value = ymdText(days[0]) + '(' + dow0 + ') 〜 ' + ymdText(days[6]) + '(' + dow6 + ')';
+    ws.getCell(3, 1).value = '作成';
+    ws.getCell(3, 2).value = now.getFullYear() + '/' + (now.getMonth() + 1) + '/' + now.getDate() +
+      ' ' + p(now.getHours()) + ':' + p(now.getMinutes());
+    [2, 3].forEach(function (r) {
+      ws.getCell(r, 1).font = { bold: true, color: { argb: XC.usu } };
+      ws.getCell(r, 1).alignment = { horizontal: 'left' };
+    });
+
+    // 見出し行(5行目)
+    var head = ['工事名', '注番'];
+    days.forEach(function (d, i) {
+      var dt = YY.parseKey(d);
+      head.push(YY.DOW[i] + '\n' + (dt.getMonth() + 1) + '/' + dt.getDate());
+    });
+    var hr = ws.getRow(5);
+    head.forEach(function (v, i) {
+      var c = hr.getCell(i + 1);
+      c.value = v;
+      c.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+      c.fill = {
+        type: 'pattern', pattern: 'solid',
+        fgColor: { argb: (i >= 7) ? XC.midori2 : XC.midori }   // 土日は少し明るく
+      };
+      c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      c.border = xBox();
+    });
+    hr.height = 34;
+
+    // 工事の行。1行が1工事で、名前は折り返して縦に並びます
+    var dayCount = days.map(function () { return 0; });
+    var r = 6;
+    blocks.forEach(function (bk) {
+      var row = ws.getRow(r);
+
+      var cn = row.getCell(1);
+      cn.value = bk.job.name;
+      cn.font = { bold: true };
+      cn.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+
+      var cno = row.getCell(2);
+      cno.value = bk.job.no || '';
+      cno.alignment = { horizontal: 'center', vertical: 'middle' };
+
+      bk.cols.forEach(function (list, i) {
+        var c = row.getCell(3 + i);
+        c.value = list.join('\n');
+        c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        if (i >= 5) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XC.donichi } };
+        dayCount[i] += list.length;
+      });
+
+      // 高さは「いちばん人数の多い日」と「工事名の折り返し行数」の大きいほうに合わせます
+      var nameLines = Math.max(1, Math.ceil(wchOf(bk.job.name) / (jobW - 1)));
+      row.height = Math.max(22, Math.max(bk.n, nameLines) * 15 + 8);
+
+      for (var i2 = 1; i2 <= 9; i2++) row.getCell(i2).border = xBox();
+      r++;
+    });
+
+    // いちばん下:日ごとの人数
+    var fr = ws.getRow(r);
+    fr.getCell(1).value = '日ごとの人数';
+    fr.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+    dayCount.forEach(function (n, i) {
+      var c = fr.getCell(3 + i);
+      c.value = n ? n + '名' : '';
+      c.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
+    for (var i3 = 1; i3 <= 9; i3++) {
+      fr.getCell(i3).border = xBox();
+      fr.getCell(i3).font = { bold: true, color: { argb: XC.midori } };
+      fr.getCell(i3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XC.shukei } };
+    }
+    fr.height = 22;
+
+    /* ===== 2枚目:入場者一覧(1人1行)===== */
+    var list = sheetList(jobs);
+    var ws2 = wb.addWorksheet('入場者一覧', { views: [{ state: 'frozen', ySplit: 1 }] });
+    list.forEach(function (row2, i) {
+      var rr = ws2.getRow(i + 1);
+      row2.forEach(function (v, k) {
+        var c = rr.getCell(k + 1);
+        c.value = v;
+        c.border = xBox();
+        c.alignment = { vertical: 'middle' };
+        if (i === 0) {
+          c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+          c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XC.midori } };
+          c.alignment = { horizontal: 'center', vertical: 'middle' };
+        }
+      });
+    });
+    ws2.autoFilter = { from: { row: 1, column: 1 }, to: { row: list.length, column: 7 } };
+    [12, 6, jobW, noW, 16, 12, 8].forEach(function (w, i) { ws2.getColumn(i + 1).width = w; });
+
+    return wb.xlsx.writeBuffer();
   }
-  /**
-   * 2枚目「入場者一覧」:1人1行。
-   * 入場申請にそのまま使えるよう、日ごと・工事ごとに1人ずつ並べます。
-   * この形なら、何人いても名前が欄からはみ出して切れることがありません。
-   */
+
   function sheetList(jobs) {
     var days = YY.weekDates(S.monday);
     var rows = [['日付', '曜日', '工事名', '注番', '氏名', '区分', 'しるし']];
@@ -3369,36 +3472,29 @@ input{font-family:inherit}
       return;
     }
     var days = YY.weekDates(S.monday);
-    var week = sheetWeek(jobs);
-    var list = sheetList(jobs);
     var name = 'よつば_週間予定_東レ工事_' + days[0] + '_' + days[6];
+    var btn = $('btnXls');
 
-    if (typeof XLSX === 'undefined') {
-      // Excel の部品を読めない環境では、2枚ぶんを1つの CSV につなげて出します
-      var csv = csvText(week.rows) + '\r\n\r\n' + csvText(list);
+    btn.disabled = true;
+    toast('Excelを作っています…');
+
+    loadExcelJS().then(function (E) {
+      return buildBook(E, jobs);
+    }).then(function (buf) {
+      download(new Blob([buf], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      }), name + '.xlsx');
+      var list = sheetList(jobs);
+      toast('東レ工事 ' + jobs.length + '件 / のべ ' + (list.length - 1) + '人日を書き出しました');
+    }).catch(function (e) {
+      // 部品を読めないときは、中身だけ CSV で出します(書式は付きません)
+      console.warn('[Excel]', e);
+      var csv = csvText(sheetList(jobs));
       download(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }), name + '.csv');
       toast('Excelの部品を読み込めなかったので、CSVで書き出しました');
-      return;
-    }
-
-    var wb = XLSX.utils.book_new();
-
-    var ws1 = XLSX.utils.aoa_to_sheet(week.rows);
-    ws1['!cols'] = week.cols;             // 中身を実測して決めた列幅
-    ws1['!merges'] = week.merges;         // 工事名と注番は、その工事のぶんだけ縦につなげます
-    ws1['!freeze'] = { xSplit: 2, ySplit: 5 };
-    XLSX.utils.book_append_sheet(wb, ws1, '週間表');
-
-    var ws2 = XLSX.utils.aoa_to_sheet(list);
-    ws2['!cols'] = [{ wch: 11 }, { wch: 5 }, { wch: 32 }, { wch: 12 },
-      { wch: 14 }, { wch: 10 }, { wch: 6 }];
-    ws2['!freeze'] = { xSplit: 0, ySplit: 1 };
-    ws2['!autofilter'] = { ref: XLSX.utils.encode_range({
-      s: { r: 0, c: 0 }, e: { r: list.length - 1, c: 6 } }) };
-    XLSX.utils.book_append_sheet(wb, ws2, '入場者一覧');
-
-    XLSX.writeFile(wb, name + '.xlsx');
-    toast('東レ工事 ' + jobs.length + '件 / のべ ' + (list.length - 1) + '人日を書き出しました');
+    }).then(function () {
+      btn.disabled = false;
+    });
   }
 
   function download(blob, filename) {
