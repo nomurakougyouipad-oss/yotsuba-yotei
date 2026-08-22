@@ -283,6 +283,13 @@ input{font-family:inherit}
 /* 長い名前でも日本語の途中で折り返せるようにします(body は keep-all のため) */
 .grid .job .n{font-weight:700;line-height:1.3;word-break:break-all;overflow-wrap:anywhere}
 .grid .job .no{font-size:11px;color:var(--usu)}
+/* 請求済み。色と札は集計ページと同じにしています */
+.grid .job.billed{background:#e7eff7;box-shadow:1px 0 0 #c9dcee}
+.grid .job.billed .n{color:#2c5f8f}
+.grid .job .seitag{
+  display:inline-block;margin-top:3px;font-size:10px;font-weight:900;
+  color:#fff;background:#2c5f8f;border-radius:8px;padding:1px 6px;line-height:1.5;
+}
 /* セル */
 .grid .cell{
   padding:8px 6px;background:#fff;border-bottom:1px solid var(--keisen);
@@ -991,6 +998,8 @@ input{font-family:inherit}
     online: true,
     yoOpen: false,       // PCの「余」行をひらいているか
     unsubWeek: null,
+    billed: {},          // 請求済み { 'YYYY-MM': { 工事id: true } }
+    unsubBilled: [],     // 見張りを止める関数(週がまたぐと2つになります)
     prevMonday: null,    // 先週の月曜(コピー元)
     prevWeek: null,      // 先週のデータ。読めるまでは null
     nearBase: null,      // 直近の週を読んだときの基準
@@ -1124,7 +1133,63 @@ input{font-family:inherit}
    *   ・先週からのコピー元、継続中の工事の判定
    *   ・「前に使った工事」パネルの一覧
    */
+  /* --- 請求済み ---------------------------------------------------
+     請求済みは「工事 × 月ごと」なので、いま出ている週が入っている月を
+     見張ります。週が月をまたぐときは、2つの月ぶんを見ます。
+     ----------------------------------------------------------------- */
+
+  /** その週が入っている月。1つか2つ返します */
+  function weekMonths() {
+    var out = [], seen = {};
+    YY.weekDates(S.monday).forEach(function (d) {
+      var ym = d.slice(0, 7);
+      if (!seen[ym]) { seen[ym] = true; out.push(ym); }
+    });
+    return out;
+  }
+
+  function watchBilled() {
+    S.unsubBilled.forEach(function (f) { f(); });
+    S.unsubBilled = [];
+    S.billed = {};
+    weekMonths().forEach(function (ym) {
+      var y = +ym.slice(0, 4), m = +ym.slice(5, 7);
+      S.unsubBilled.push(YY.subscribeBilled(y, m, function (b) {
+        S.billed[ym] = b || {};
+        render();
+      }));
+    });
+  }
+
+  /**
+   * 工事1件の請求済みの出し方。出さないときは null を返します。
+   *   週が1つの月に収まる    … その月が請求ずみなら「請求済」
+   *   週が月をまたぐとき
+   *     両方とも請求ずみ     … 「請求済」
+   *     片方だけ請求ずみ     … 「8月分 請求済」(どちらの分か分かるように)
+   * こうすると、ただの「請求済」は「いま見えている週はぜんぶ請求ずみ」の意味
+   * になり、月をまたいで半分だけのときと取り違えません。
+   */
+  function billedInfo(jobId) {
+    var ms = weekMonths();
+    var done = ms.filter(function (ym) { return (S.billed[ym] || {})[jobId]; });
+    if (!done.length) return null;
+    var nm = function (ym) { return (+ym.slice(5, 7)) + '月'; };
+    if (done.length === ms.length) {
+      return {
+        label: '請求済',
+        title: ms.map(nm).join('と') + 'の分は請求ずみです'
+      };
+    }
+    var rest = ms.filter(function (ym) { return done.indexOf(ym) < 0; });
+    return {
+      label: nm(done[0]) + '分 請求済',
+      title: nm(done[0]) + 'の分は請求ずみです(' + rest.map(nm).join('') + 'の分はまだです)'
+    };
+  }
+
   function watchWeek() {
+    watchBilled();
     if (S.unsubWeek) S.unsubWeek();
     S.unsubWeek = YY.subscribeWeek(S.monday, function (w) {
       S.week = w;
@@ -1444,8 +1509,12 @@ input{font-family:inherit}
     c.setAttribute('data-idx', idx);
     c.setAttribute('data-total', total);
 
+    var bi = billedInfo(j.id);
+    if (bi) c.classList.add('billed');
+
     c.innerHTML = '<div class="n">' + esc(j.name) + '</div>' +
       (j.no ? '<div class="no">' + esc(j.no) + '</div>' : '') +
+      (bi ? '<div class="seitag">' + esc(bi.label) + '</div>' : '') +
       (waiting ? '<div class="waiting">' + esc(mdLabel(j.start)) + ' 開始・まだ人なし</div>' : '') +
       // 「隠す」にしたのに表にある工事は、その理由をはっきり出します
       (!j.active
@@ -1455,6 +1524,7 @@ input{font-family:inherit}
           '</div>'
         : '');
     c.title = j.name + (j.no ? '(' + j.no + ')' : '') +
+      (bi ? '\n' + bi.title + '(集計ページで切り替えます)' : '') +
       (!j.active ? '\nこの工事は「表から隠す」にしていますが、予定が入っているので表示しています' : '') +
       '\nクリックで工事を直せます';
     c.addEventListener('click', function (e) {
