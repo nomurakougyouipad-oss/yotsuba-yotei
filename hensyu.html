@@ -411,6 +411,22 @@ input{font-family:inherit}
 .grp .gt.sub{font-size:14px;font-weight:700;color:var(--usu);margin-bottom:8px}
 .grp .gt .sum{margin-left:8px;font-size:13px;font-weight:700;color:#8a6516}
 .grp .ghint{margin-top:10px;font-size:12px;color:#8a6516;line-height:1.5}
+/* 「選んでいる人」の欄。名簿の上に置いて、誰を選んだか一目で分かるようにします */
+.grp.chosen{background:var(--kyo);border:1px solid var(--midori);border-radius:12px;padding:12px}
+.grp.chosen.off{display:none}
+.grp.chosen .gt{
+  color:var(--midori);display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:10px;
+}
+.grp.chosen .gt .sum{margin-left:0;color:var(--midori)}
+.grp.chosen .gt .hint4{margin-left:auto;font-size:12px;font-weight:700;color:var(--usu)}
+/* 人数が多いときは、この欄の中だけをスクロールさせます
+   (欄がどこまでも伸びて、下の名簿を押し下げてしまうのを防ぎます) */
+.grp.chosen .chips{max-height:160px;overflow-y:auto;overscroll-behavior:contain}
+/* 外す目印の ✕ は、名前から少し離して小さめに */
+.grp.chosen .chip .x{margin-left:6px;font-size:.85em;opacity:.85}
+/* 緑のチップの上でも、しるし(◎など)が読めるようにします */
+.chip.on .sc{color:#bdf0d2}
+
 .chips{display:flex;flex-wrap:wrap;gap:10px}
 .chip{
   min-height:44px;padding:0 18px;border-radius:22px;border:1px solid var(--keisen);
@@ -828,6 +844,9 @@ input{font-family:inherit}
   .copywrap{max-width:620px;margin:0 auto;padding:10px 12px 8px}
   .copyfall{max-width:620px;margin:0 auto 12px}
   .copyfall textarea{min-height:120px}
+
+  /* 「選んでいる人」の欄は、縦が狭いぶん低くします */
+  .grp.chosen .chips{max-height:88px}
 
   /* ---- メンバー一覧は、横に広いので2列に ---- */
   .wlist{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:10px 12px}
@@ -1949,6 +1968,12 @@ input{font-family:inherit}
     });
     body.appendChild(lw);
 
+    /* 選んでいる人。中身は updateChosen() が組み直します。
+       下の名簿には触らないので、選び直しても一覧の位置は動きません */
+    var chosen = el('div', 'grp chosen off', '');
+    chosen.id = 'chosen';
+    body.appendChild(chosen);
+
     /* --- 名前は1か所だけ。状態は見た目で分けます -----------------------
        白      … 余っている(そのまま選べる)
        緑      … いま選んでいる
@@ -1962,7 +1987,13 @@ input{font-family:inherit}
     var c1 = el('div', 'chips', '');
     var listed = YY.selectableWorkers(sh.members);
     sh.listed = listed;
-    listed.forEach(function (w) { c1.appendChild(pickChip(w.name, w.unknown)); });
+    // 上の欄から外したときに、下のチップの色だけを塗り替えるため覚えておきます
+    sh.chipEls = {};
+    listed.forEach(function (w) {
+      var b = pickChip(w.name, w.unknown);
+      sh.chipEls[w.name] = b;
+      c1.appendChild(b);
+    });
     if (!listed.length) {
       c1.innerHTML = '<div style="font-size:14px;color:#8a6516">' +
         'メンバーが登録されていません</div>';
@@ -2043,6 +2074,86 @@ input{font-family:inherit}
     if (keepTop) body.scrollTop = keepTop;
   }
 
+  /* --- 「選んでいる人」の欄 -------------------------------------------
+     選んだ順(ord)にチップを並べます。しるしも名前の前に出します。
+     タップすると外せます。下の名簿は色を塗り替えるだけなので、
+     並びも位置も動きません。誰も選んでいないときは出しません。
+     ------------------------------------------------------------------- */
+
+  function drawChosen(wrap) {
+    var sh = S.sheet;
+    var X = '<span class="x">✕</span>';   // 外す目印
+    var names = Object.keys(sh.members).sort(function (a, b) {
+      return (sh.members[a].ord || 0) - (sh.members[b].ord || 0);
+    });
+    var n = names.length + sh.extras.length;
+
+    if (!n) { wrap.className = 'grp chosen off'; wrap.innerHTML = ''; return; }
+
+    wrap.className = 'grp chosen';
+    wrap.innerHTML = '<div class="gt">✅ 選んでいる人' +
+      '<span class="sum">' + n + '名</span>' +
+      '<span class="hint4">タップで外します</span></div>';
+
+    var c = el('div', 'chips', '');
+    names.forEach(function (name) {
+      var mk = sh.members[name].mark || '';
+      var b = document.createElement('button');
+      b.className = 'chip on' + (YY.isCoop(name) ? ' coop' : '') +
+        (YY.isKnown(name) ? '' : ' unknown');
+      b.innerHTML = (mk ? '<span class="sc">' + esc(mk) + '</span>' : '') + esc(name) + X;
+      b.title = name + ' … タップすると外します';
+      b.addEventListener('click', function () { unpick(name); });
+      c.appendChild(b);
+    });
+    // 名簿にない人(手で入れた人)も、ここにまとめて出します
+    sh.extras.forEach(function (x, i) {
+      var b = document.createElement('button');
+      b.className = 'chip on';
+      b.innerHTML = esc(x) + X;
+      b.title = x + ' … 名簿にない人。タップすると外します';
+      b.addEventListener('click', function () { sh.extras.splice(i, 1); refreshSheet(); });
+      c.appendChild(b);
+    });
+    wrap.appendChild(c);
+  }
+
+  /** 欄を作り直します。
+      欄が画面の上に隠れているときは、高さが変わったぶんスクロールをずらして
+      打ち消します。こうすると、下の名簿が上下に動いて見えません。 */
+  function updateChosen() {
+    var sh = S.sheet; if (!sh) return;
+    var box = $('sheet');
+    var wrap = box.querySelector('#chosen');
+    var body = box.querySelector('.sb');
+    if (!wrap || !body) return;
+
+    var wr = wrap.getBoundingClientRect(), br = body.getBoundingClientRect();
+    var hidden = wr.bottom <= br.top + 1;
+    var list = box.querySelector('.grp.yo');
+    // 欄の高さではなく、名簿そのものが何px動いたかで測ります
+    var before = list ? list.getBoundingClientRect().top : 0;
+
+    drawChosen(wrap);
+
+    if (hidden && list) {
+      var d = list.getBoundingClientRect().top - before;
+      if (d) body.scrollTop += d;
+    }
+  }
+
+  /** 上の欄から外します。下の名簿は色だけ塗り替えます(位置はそのまま) */
+  function unpick(name) {
+    var sh = S.sheet;
+    if (!sh || !sh.members[name]) return;
+    delete sh.members[name];
+    // よそのセルから連れてくる予約もしていたら、あわせて取り消します
+    sh.moves = sh.moves.filter(function (mv) { return mv.name !== name; });
+    var b = sh.chipEls && sh.chipEls[name];
+    if (b) styleChip(b, name, !YY.isKnown(name));
+    updateCount();
+  }
+
   /**
    * その人がいまどの状態か。
    *   'on'      いま選んでいる
@@ -2066,10 +2177,13 @@ input{font-family:inherit}
     var st = chipState(name);
     var coop = YY.isCoop(name) ? ' coop' : '';
     if (unknown) coop += ' unknown';
+    /* 名簿のチップには ✓ を付けません。選んでいることは緑と、
+       上の「選んでいる人」の欄で分かります。
+       こうすると選んでも幅が変わらないので、名簿の折り返しがずれません */
     if (st === 'on') {
       var mk = sh.members[name].mark || '';
       b.className = 'chip on' + coop;
-      b.innerHTML = (mk ? '<span class="sc">' + esc(mk) + '</span>' : '') + esc(name) + ' ✓';
+      b.innerHTML = (mk ? '<span class="sc">' + esc(mk) + '</span>' : '') + esc(name);
       b.title = '';
     } else if (st === 'rest') {
       b.className = 'chip rest';
@@ -2248,6 +2362,8 @@ input{font-family:inherit}
   /** 「いま選んでいるのは○名」と、上の内訳を書き替えます */
   function updateCount() {
     var sh = S.sheet; if (!sh) return;
+    // 人数が変わる場面はすべてここを通るので、上の欄もここで作り直します
+    updateChosen();
     var box = $('sheet');
     var n = Object.keys(sh.members).length + sh.extras.length;
     var el1 = box.querySelector('#nowSel');
