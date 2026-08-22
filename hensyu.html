@@ -3230,7 +3230,39 @@ input{font-family:inherit}
     return d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate();
   }
 
-  /** 1枚目「週間表」:工事 × 月〜日。名前は「・」でつなぎます */
+  /**
+   * Excel の列幅(wch)の目安。全角は2文字ぶんとして数えます。
+   * 幅を実測で決めるので、あとから手で直さなくても名前や工事名が収まります。
+   */
+  function wchOf(str) {
+    var n = 0;
+    String(str == null ? '' : str).split('').forEach(function (c) {
+      n += /[\x00-\x7f\uff61-\uff9f]/.test(c) ? 1 : 2;   // 半角は1、全角は2
+    });
+    return n;
+  }
+  function maxWch(list, min) {
+    var w = min || 0;
+    list.forEach(function (x) { w = Math.max(w, wchOf(x)); });
+    return w + 3;                                        // 余白ぶん
+  }
+
+  /**
+   * 1枚目「週間表」:工事 × 月〜日。
+   *
+   * 1マスに全員を詰め込むと、Excel では欄からはみ出して読めません。
+   * SheetJS の無料版では折り返し(wrapText)を書き出せないことを確かめたので
+   * (列幅と行の高さは書き出せますが、折り返しの指定だけが落ちます)、
+   * 【1人1行】に並べ、工事名と注番はその工事のぶんだけ縦に結合します。
+   * この形なら折り返しがいらないので、どのExcelでも必ず全員見えます。
+   *
+   *   工事名                     注番    月 8/17   火 8/18
+   *   ┌ C-5 各所駆動ベルト改造    12345   山下      山下
+   *   │                                  津田      坂口
+   *   └                                  松高海
+   *
+   * 戻り値 { rows, merges, cols }
+   */
   function sheetWeek(jobs) {
     var days = YY.weekDates(S.monday);
     var now = new Date();
@@ -3250,19 +3282,52 @@ input{font-family:inherit}
     });
     rows.push(head);
 
-    jobs.forEach(function (j) {
-      var r = [j.name, j.no || ''];
-      days.forEach(function (d) {
-        var c = YY.displayCell(S.week, j.id, d);
-        if (!c.count) { r.push(''); return; }
-        var names = c.rows.map(YY.nameWithMarks).concat(c.extras);
-        r.push(names.join('・') + '(' + c.count + '名)');
-      });
-      rows.push(r);
-    });
-    return rows;
-  }
+    var merges = [];
+    var allNames = [];
+    var dayCount = days.map(function () { return 0; });
 
+    jobs.forEach(function (j) {
+      // 曜日ごとの名前を先に集めて、いちばん多い日に行数を合わせます
+      var cols = days.map(function (d) {
+        var c = YY.displayCell(S.week, j.id, d);
+        return c.rows.map(YY.nameWithMarks).concat(c.extras);
+      });
+      var n = cols.reduce(function (m, x) { return Math.max(m, x.length); }, 0);
+      if (!n) return;
+
+      var top = rows.length;
+      for (var i = 0; i < n; i++) {
+        var r = [i === 0 ? j.name : '', i === 0 ? (j.no || '') : ''];
+        cols.forEach(function (list) { r.push(list[i] || ''); });
+        rows.push(r);
+      }
+      // 工事名と注番は、その工事のぶんだけ縦につなげます
+      if (n > 1) {
+        merges.push({ s: { r: top, c: 0 }, e: { r: top + n - 1, c: 0 } });
+        merges.push({ s: { r: top, c: 1 }, e: { r: top + n - 1, c: 1 } });
+      }
+      cols.forEach(function (list, k) {
+        dayCount[k] += list.length;
+        list.forEach(function (x) { allNames.push(x); });
+      });
+    });
+
+    // いちばん下に、日ごとの人数
+    rows.push([]);
+    var foot = ['日ごとの人数', ''];
+    dayCount.forEach(function (n) { foot.push(n ? n + '名' : ''); });
+    rows.push(foot);
+
+    // 列幅は中身の実測で決めます(あとから手で直さなくて済むように)
+    var cols = [
+      { wch: maxWch(jobs.map(function (j) { return j.name; }).concat(['日ごとの人数']), 16) },
+      { wch: maxWch(jobs.map(function (j) { return j.no || ''; }).concat(['注番']), 6) }
+    ];
+    var nameW = maxWch(allNames.concat(head.slice(2)), 8);
+    for (var k = 0; k < 7; k++) cols.push({ wch: nameW });
+
+    return { rows: rows, merges: merges, cols: cols };
+  }
   /**
    * 2枚目「入場者一覧」:1人1行。
    * 入場申請にそのまま使えるよう、日ごと・工事ごとに1人ずつ並べます。
@@ -3310,7 +3375,7 @@ input{font-family:inherit}
 
     if (typeof XLSX === 'undefined') {
       // Excel の部品を読めない環境では、2枚ぶんを1つの CSV につなげて出します
-      var csv = csvText(week) + '\r\n\r\n' + csvText(list);
+      var csv = csvText(week.rows) + '\r\n\r\n' + csvText(list);
       download(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }), name + '.csv');
       toast('Excelの部品を読み込めなかったので、CSVで書き出しました');
       return;
@@ -3318,10 +3383,9 @@ input{font-family:inherit}
 
     var wb = XLSX.utils.book_new();
 
-    var ws1 = XLSX.utils.aoa_to_sheet(week);
-    var w1 = [{ wch: 32 }, { wch: 12 }];
-    for (var i = 0; i < 7; i++) w1.push({ wch: 30 });
-    ws1['!cols'] = w1;
+    var ws1 = XLSX.utils.aoa_to_sheet(week.rows);
+    ws1['!cols'] = week.cols;             // 中身を実測して決めた列幅
+    ws1['!merges'] = week.merges;         // 工事名と注番は、その工事のぶんだけ縦につなげます
     ws1['!freeze'] = { xSplit: 2, ySplit: 5 };
     XLSX.utils.book_append_sheet(wb, ws1, '週間表');
 
