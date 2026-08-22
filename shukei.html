@@ -105,6 +105,11 @@ td.jn .n{
   overflow:hidden;word-break:break-all;
 }
 td.jn .no{font-size:10px;color:var(--usu);line-height:1.2}
+/* 開始日。注番と同じ行に、少し濃い色で出します */
+td.jn .st{color:var(--midori);font-weight:700}
+td.jn .st.guess{color:var(--usu2);font-weight:400}
+td.jn .dot{color:#c9c3b4;margin:0 3px}
+tr.billed td.jn .st{color:var(--sei3)}
 th.d{min-width:26px;text-align:center;line-height:1.15;font-size:12px}
 th.d .w{font-size:10px;color:var(--usu);font-weight:400;display:block}
 td.d{text-align:center;font-variant-numeric:tabular-nums}
@@ -278,6 +283,7 @@ td.jn:hover .n{text-decoration:underline}
     weeks: null,    // その月にかかる週データ(内訳で使います)
     allWeeks: null, // 全期間ぶん。総合計の列と内訳で使います
     allTotals: null,// 全期間の工事別合計 { 工事id: 人工 }
+    allFirst: null, // 全期間で、工事ごとに人が入っているいちばん早い日
     billed: {},     // その月の請求済み { 工事id: true }
     unwatchBilled: null,
     detail: null,   // いま開いている内訳
@@ -345,6 +351,7 @@ td.jn:hover .n{text-decoration:underline}
 
     S.allWeeks = null;      // 月を動かしたら、全期間ぶんも読み直します
     S.allTotals = null;
+    S.allFirst = null;
     YY.loadMonthWeeks(S.y, S.m).then(function (weeks) {
       S.loading = false;
       S.weeks = weeks;
@@ -368,6 +375,7 @@ td.jn:hover .n{text-decoration:underline}
   function loadAllTotals() {
     if (S.allWeeks) {
       S.allTotals = YY.jobTotalsAll(S.allWeeks);
+      S.allFirst = YY.jobFirstDates(S.allWeeks);
       draw();
       return;
     }
@@ -376,6 +384,7 @@ td.jn:hover .n{text-decoration:underline}
       if (S.y !== y || S.m !== m) return;      // 待つ間に月が変わったら捨てます
       S.allWeeks = all;
       S.allTotals = YY.jobTotalsAll(all);
+      S.allFirst = YY.jobFirstDates(all);
       draw();
     }).catch(function (e) {
       console.warn('[集計] 全期間を読めませんでした:', e);
@@ -393,6 +402,19 @@ td.jn:hover .n{text-decoration:underline}
     ids.forEach(function (id) { have[id] = true; });
     d.jobIds.forEach(function (id) { if (!have[id]) ids.push(id); });
     return ids;
+  }
+
+  /** 工事名の下の小さい行(注番と開始日)。どちらも無ければ出しません */
+  function subLine(id, lab) {
+    var st = startText(id);
+    var out = [];
+    if (lab.sub) out.push(esc(lab.sub));
+    if (st) {
+      out.push('<span class="st' + (st.guess ? ' guess' : '') + '" title="' +
+        esc(st.title) + '">' + esc(st.text) + '</span>');
+    }
+    if (!out.length) return '';
+    return '<div class="no">' + out.join('<span class="dot">・</span>') + '</div>';
   }
 
   function draw() {
@@ -442,7 +464,7 @@ td.jn:hover .n{text-decoration:underline}
         '<div class="txt" data-job="' + esc(id) + '" title="クリックで内訳を見る">' +
         '<div class="n">' + esc(lab.name) +
           (bi ? '<span class="seitag">請求済</span>' : '') + '</div>' +
-        (lab.sub ? '<div class="no">' + esc(lab.sub) + '</div>' : '') +
+        subLine(id, lab) +
         '</div></div></td>');
       d.dates.forEach(function (dt) {
         var n = (d.byJob[id] || {})[dt] || 0;
@@ -502,6 +524,26 @@ td.jn:hover .n{text-decoration:underline}
         esc(r.name) + '</span>';
     }).concat((extras || []).map(function (x) { return esc(x); }))
       .join('<span class="sep">・</span>');
+  }
+
+  /**
+   * 工事名の下に出す開始日。出さないときは null を返します。
+   *   開始日が入っている       … その日
+   *   入っていない             … 人が入っているいちばん早い日
+   *   どちらも無い(予定なし)  … 出しません
+   * どちらの日かは、マウスを乗せると分かるようにしています。
+   */
+  function startText(jobId) {
+    var j = YY.master.jobById[jobId];
+    var set = j && j.start;
+    var d = set || (S.allFirst || {})[jobId];
+    if (!d) return null;
+    var t = YY.parseKey(d);
+    return {
+      text: (t.getMonth() + 1) + '/' + t.getDate() + '〜',
+      guess: !set,
+      title: set ? '開始日 ' + ymd(d) : '予定が入っているいちばん早い日 ' + ymd(d) + '(開始日は未設定)'
+    };
   }
 
   function ymd(dateKey) {

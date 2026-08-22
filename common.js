@@ -1018,6 +1018,27 @@
   }
 
   /**
+   * 全期間で、工事ごとに人が入っているいちばん早い日 { 工事id: 'YYYY-MM-DD' }
+   * 開始日が入っていない工事の代わりに使います。
+   */
+  function jobFirstDates(weeks) {
+    var out = {};
+    Object.keys(weeks || {}).forEach(function (wk) {
+      var assign = (weeks[wk] || {}).assign || {};
+      Object.keys(assign).forEach(function (jobId) {
+        if (jobId === REST_KEY) return;          // 休みは工事ではありません
+        var days = assign[jobId] || {};
+        Object.keys(days).forEach(function (d) {
+          var c = days[d] || {};
+          if (!Object.keys(c.members || {}).length && !(c.extras || []).length) return;
+          if (!out[jobId] || d < out[jobId]) out[jobId] = d;
+        });
+      });
+    });
+    return out;
+  }
+
+  /**
    * 全期間の、工事ごとの総人工 { 工事id: 人工 }
    * 同じ日が複数の週ノードに入っていても二重に数えないよう、日付でまとめます。
    */
@@ -1473,7 +1494,7 @@
 
     // 請求済み(月ごと)
     subscribeBilled: subscribeBilled, setBilled: setBilled,
-    ymKey: ymKey, jobTotalsAll: jobTotalsAll,
+    ymKey: ymKey, jobTotalsAll: jobTotalsAll, jobFirstDates: jobFirstDates,
 
     // 接続
     init: initFirebase,
