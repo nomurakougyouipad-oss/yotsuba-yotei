@@ -151,6 +151,27 @@
     };
   }
 
+  /** その週がどの月のものか。木曜(週の真ん中)で決めます。
+      こうすると、月をまたぐ週でも「どちらの月の週か」が素直に決まります */
+  function weekMonth(mondayKey) {
+    var t = addDays(parseKey(mondayKey), 3);   // 木曜
+    return { y: t.getFullYear(), m: t.getMonth() };
+  }
+
+  /** その月の1日を含む週の月曜キー(m は 0〜11。はみ出しても年をまたいで計算します) */
+  function monthTopMonday(y, m) {
+    return toKey(mondayOf(new Date(y, m, 1)));
+  }
+
+  /** 前月(-1)・翌月(+1)の第1週(1日を含む週)の月曜キー。
+      1日が今の週に入っていると同じ週になってしまうので、そのときはもう1か月ずらします */
+  function moveMonth(mondayKey, step) {
+    var w = weekMonth(mondayKey);
+    var k = monthTopMonday(w.y, w.m + step);
+    if (k === mondayKey) k = monthTopMonday(w.y, w.m + step * 2);
+    return k;
+  }
+
   /** 日付キー → '7/2(木)' */
   function dayLabel(dateKey) {
     var d = parseKey(dateKey);
@@ -1376,6 +1397,7 @@
     mondayOf: mondayOf, addWeeks: addWeeks, thisMonday: thisMonday,
     todayKey: todayKey, weekDates: weekDates, weekLabel: weekLabel,
     dayLabel: dayLabel, dowIndex: dowIndex, isToday: isToday,
+    weekMonth: weekMonth, monthTopMonday: monthTopMonday, moveMonth: moveMonth,
 
     // 名簿
     master: master,

@@ -67,7 +67,7 @@ input{font-family:inherit}
 
 /* ---- 週ナビ ---- */
 .weeknav{
-  display:flex;align-items:center;gap:8px;padding:10px 12px;
+  display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;padding:10px 12px;
   background:#fff;border-bottom:1px solid var(--keisen);
 }
 .weeknav button{
@@ -76,8 +76,12 @@ input{font-family:inherit}
 }
 .weeknav button.now{min-width:0;padding:0 14px;border-color:var(--midori);font-size:16px}
 .weeknav .lbl{flex:1;text-align:center;line-height:1.2}
-.weeknav .lbl b{font-size:18px;font-weight:900;display:block}
-.weeknav .lbl span{font-size:13px;color:var(--usu)}
+.weeknav .lbl b{font-size:18px;font-weight:900}
+.weeknav .lbl span{font-size:13px;color:var(--usu);margin-left:6px}
+/* 前月・翌月 */
+.weeknav button.mv{min-width:0;padding:0 12px;font-size:15px}
+/* ボタンが5つになったので、狭い画面では日付をボタンの1行うえに出します */
+.weeknav .lbl{flex:1 0 100%;order:-1;margin-bottom:2px}
 
 /* ---- 名前の帯 ---- */
 .mebar{
@@ -248,9 +252,11 @@ input{font-family:inherit}
   .head .chg{min-height:32px;padding:0 12px;font-size:13px;border-radius:16px}
   .obi{padding:5px 14px;font-size:13px}
 
-  .weeknav{padding:4px 10px;gap:6px}
+  /* 横向きは横に余裕があるので、日付をボタンと同じ行に戻します */
+  .weeknav{padding:4px 10px;gap:6px;flex-wrap:nowrap;justify-content:flex-start}
+  .weeknav .lbl{flex:1;order:0;margin-bottom:0}
   .weeknav button{min-width:44px;min-height:34px;font-size:17px;border-radius:8px}
-  .weeknav button.now{padding:0 12px;font-size:14px}
+  .weeknav button.now,.weeknav button.mv{padding:0 12px;font-size:14px}
   .weeknav .lbl b{font-size:16px}
   .weeknav .lbl span{font-size:12px}
 
@@ -454,6 +460,14 @@ input{font-family:inherit}
     render();
   }
 
+  /** 前月(-1)・翌月(+1)の第1週(1日を含む週)へ飛びます */
+  function goMonth(step) {
+    S.monday = YY.moveMonth(S.monday, step);
+    S.openMates = {};
+    watchWeek();
+    render();
+  }
+
   /* =================================================================
      描き分け
      ================================================================= */
@@ -474,12 +488,17 @@ input{font-family:inherit}
   function weekNav() {
     var lb = YY.weekLabel(S.monday);
     var w = el('div', 'weeknav',
-      '<button data-w="-1">◀</button>' +
+      '<button data-w="-1" title="1週まえ">◀</button>' +
+      '<button class="mv" data-m="-1" title="前の月の1日がある週へ">前月</button>' +
       '<button class="now" data-w="0">今週</button>' +
+      '<button class="mv" data-m="1" title="次の月の1日がある週へ">翌月</button>' +
       '<div class="lbl"><b>' + lb.range + '</b><span>' + lb.year + '</span></div>' +
-      '<button data-w="1">▶</button>');
+      '<button data-w="1" title="1週さき">▶</button>');
     Array.prototype.forEach.call(w.querySelectorAll('button'), function (b) {
-      b.addEventListener('click', function () { goWeek(+b.getAttribute('data-w')); });
+      var m = b.getAttribute('data-m');
+      b.addEventListener('click', function () {
+        if (m !== null) goMonth(+m); else goWeek(+b.getAttribute('data-w'));
+      });
     });
     return w;
   }
