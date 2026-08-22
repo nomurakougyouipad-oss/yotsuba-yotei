@@ -104,19 +104,21 @@ input{font-family:inherit}
 .obi.on{display:block}
 .obi.offline{background:#4a4844;color:#fff}
 .obi.master{background:#fbe9e5;color:var(--aka);border-bottom:1px solid #e5b8ae}
-/* 最終編集の帯。だれが・いつ触ったかを、いつでも見えるところに出します */
+/* 最終編集の帯。「だれが・いつ触ったか」は確かめたい情報なので、
+   薄い赤の地に赤い文字で、ぱっと目に入るようにしています。
+   まちがいのお知らせ(.obi.master)より地の色を薄くして、
+   エラーと取り違えないようにしています。 */
 .obi.last{
-  background:#fff;color:var(--usu2);border-bottom:1px solid var(--keisen);
-  font-size:12px;font-weight:700;text-align:left;padding:5px 14px;
+  background:#fdf0ec;color:var(--aka);border-bottom:1px solid #efcdc4;
+  font-size:14px;font-weight:700;text-align:left;padding:7px 14px;
   align-items:center;gap:10px;
 }
 .obi.last.on{display:flex}
-.obi.last .who{color:var(--midori);font-weight:900}
-.obi.last .when{color:var(--moji);font-weight:900}
-.obi.last .none4{color:var(--usu);font-weight:700}
+.obi.last .who,.obi.last .when{color:var(--aka);font-weight:900;font-size:15px}
+.obi.last .none4{color:var(--aka);opacity:.85}
 .obi.last .me2{
-  margin-left:auto;flex-shrink:0;min-height:26px;padding:0 10px;border-radius:13px;
-  border:1px solid var(--keisen);background:#fff;color:var(--usu2);
+  margin-left:auto;flex-shrink:0;min-height:28px;padding:0 12px;border-radius:14px;
+  border:1px solid #e5b8ae;background:#fff;color:var(--aka);
   font-size:12px;font-weight:700;
 }
 
@@ -814,6 +816,10 @@ input{font-family:inherit}
   .head .t{font-size:14px;font-weight:900}
   .head .s{font-size:11px}
   .obi{padding:4px 12px;font-size:12px}
+  /* 最終編集の帯は目立たせたいので、縮めすぎないようにします */
+  .obi.last{padding:4px 12px;font-size:13px}
+  .obi.last .who,.obi.last .when{font-size:14px}
+  .obi.last .me2{min-height:24px;font-size:11px}
 
   /* 横向きも横に余裕があるので、日付をボタンと同じ行に戻します */
   .weeknav{padding:4px 10px;gap:6px;flex-wrap:nowrap;justify-content:flex-start}
@@ -910,6 +916,9 @@ input{font-family:inherit}
      帯が途中で切れて見えないようにしています。                            */
   .head{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
   .obi{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
+  /* .obi.last は上で padding をまとめて指定しているぶん、こちらが負けてしまうので
+     同じ強さで指定し直します(そうしないとノッチの下にもぐります) */
+  .obi.last{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
   .weeknav{padding-left:calc(10px + var(--sal));padding-right:calc(10px + var(--sar))}
   .tabs{padding-left:calc(4px + var(--sal));padding-right:calc(4px + var(--sar))}
 
