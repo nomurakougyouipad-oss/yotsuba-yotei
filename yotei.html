@@ -669,7 +669,7 @@ input{font-family:inherit}
           card.appendChild(el('div', 'cnt', c.count + '名'));
         } else {
           card.appendChild(el('div', 'names mitei2',
-            YY.jobStartedBy(j, S.pickDate)
+            YY.jobStartsInWeek(j, S.monday)
               ? '<span class="wtag">' + esc(mdLabel(j.start)) + ' 開始</span> まだ決まっていません'
               : 'まだ決まっていません'));
           card.appendChild(el('div', 'cnt', '0名'));
@@ -714,10 +714,20 @@ input{font-family:inherit}
 
   /** 「使う工事だけ」で出す条件:その日に人が入っている、または開始日が来ている */
   function jobInUse(j) {
+    // 編集アプリと同じ3つの条件。ただし人の有無は「その日」で見ます
     if (YY.cellCount(S.week, j.id, S.pickDate)) return true;
-    // 直近の週を読んでいる途中は、隠さずに出しておきます
-    if (!S.nearLoaded) return YY.jobStartedBy(j, S.pickDate);
-    return YY.jobShouldShow(j, nearWeeksAll(), S.pickDate, false);
+    return YY.jobVisible(j, {
+      usedPrev: !!prevUsed()[j.id],
+      shown: !!(S.week.show || {})[j.id],
+      monday: S.monday
+    });
+  }
+
+  /** 先週に人が入っていた工事id */
+  function prevUsed() {
+    var pm = YY.addWeeks(S.monday, -1);
+    var w = (S.nearWeeks || {})[pm];
+    return w ? YY.usedJobsInWeek(w) : {};
   }
 
   /** 2026-09-01 → 9/1 */

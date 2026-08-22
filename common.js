@@ -63,7 +63,7 @@
   var JOBS_PATH = 'yotei/jobs';
   var JOB_NAME_MAX = 60;
   var JOB_NO_MAX = 30;
-  // 終わった工事を自動で引っこめるまでの週数。増やすと長く残ります
+  // 「前に使った工事」パネルが、何週さかのぼって探すか
   var JOB_KEEP_WEEKS = 4;
 
   /* --- そのほか ------------------------------------------------------- */
@@ -561,20 +561,25 @@
     return last;
   }
 
+  /** その工事の開始日が、その週の中にあるか(その週から始まる工事) */
+  function jobStartsInWeek(job, mondayKey) {
+    if (!job || !job.start) return false;
+    var sun = toKey(addDays(parseKey(mondayKey), 6));
+    return job.start >= mondayKey && job.start <= sun;
+  }
+
   /**
-   * 「使う工事だけ」で出すかどうか。
-   *   ・いま人が入っている(usedNow)             → 出す
-   *   ・開始日が来ていて、最後に人が入った日から JOB_KEEP_WEEKS 週以内 → 出す
-   *   ・一度も人が入っていなければ、開始日から JOB_KEEP_WEEKS 週以内   → 出す
-   * ref は基準の日(編集アプリは週の日曜、確認用アプリは見ている日)。
-   * weeks には、ref から JOB_KEEP_WEEKS 週ぶんさかのぼった週データを渡してください。
+   * 「使う工事だけ」で出すかどうか。次のどれかに当てはまれば出します。
+   *   ・その週に1人でも入っている        (o.usedNow)
+   *   ・先週に1人でも入っている(継続中)  (o.usedPrev)
+   *   ・「今週出す工事」に入れてある      (o.shown)
+   *   ・開始日がその週の中にある          (その週から始まる工事)
+   * 2週間以上前に終わった工事は、どれにも当たらないので隠れます。
    */
-  function jobShouldShow(job, weeks, ref, usedNow) {
-    if (usedNow) return true;
-    if (!job || !job.start || job.start > ref) return false;   // まだ始まっていません
-    var limit = toKey(addDays(parseKey(ref), -JOB_KEEP_WEEKS * 7));
-    var last = lastUsedDate(weeks, job.id);
-    return last ? (last >= limit) : (job.start >= limit);
+  function jobVisible(job, o) {
+    o = o || {};
+    if (o.usedNow || o.usedPrev || o.shown) return true;
+    return jobStartsInWeek(job, o.monday);
   }
 
   /** その工事が、その週(月曜キー)までに始まっているか。週の日曜で見ます */
@@ -719,7 +724,12 @@
 
   function normalizeWeek(v) {
     v = v || {};
-    return { assign: v.assign || {}, updatedAt: v.updatedAt || 0, updatedBy: v.updatedBy || '' };
+    return {
+      assign: v.assign || {},
+      show: v.show || {},          // 今週だけ表に出す工事 { 工事id: true }
+      updatedAt: v.updatedAt || 0,
+      updatedBy: v.updatedBy || ''
+    };
   }
 
   /** そのセルの中身 { members:{名前:{mark}}, extras:[文字列] } */
@@ -911,6 +921,39 @@
       waiters.forEach(function (w) { w.reject(e); });
       throw e;
     });
+  }
+
+  /**
+   * 「今週出す工事」を書き替えます。
+   * ids は { 工事id: true } の形。true のものだけ残し、ほかは消します。
+   * 週ノードの中に置くので、事務所の2人で共有され、翌週には持ち越しません。
+   */
+  function setWeekShow(mondayKey, ids) {
+    initFirebase();
+    var out = {};
+    Object.keys(ids || {}).forEach(function (id) {
+      if (validKey(id) && ids[id]) out[id] = true;
+    });
+    return yoteiDb.ref('yotei/weeks/' + mondayKey).update({
+      show: Object.keys(out).length ? out : null,
+      updatedAt: firebase.database.ServerValue.TIMESTAMP,
+      updatedBy: OPERATOR
+    });
+  }
+
+  /** その週に人が入っている工事id { id: true } */
+  function usedJobsInWeek(week) {
+    var u = {};
+    var a = (week && week.assign) || {};
+    Object.keys(a).forEach(function (id) {
+      var days = a[id] || {};
+      var has = Object.keys(days).some(function (d) {
+        var c = days[d] || {};
+        return Object.keys(c.members || {}).length > 0 || (c.extras || []).length > 0;
+      });
+      if (has) u[id] = true;
+    });
+    return u;
   }
 
   /** 最後に開いた週をおぼえておきます(任意) */
@@ -1363,7 +1406,8 @@
     jobStartedByWeek: jobStartedByWeek,
     JOB_KEEP_WEEKS: JOB_KEEP_WEEKS,
     lastUsedDate: lastUsedDate,
-    jobShouldShow: jobShouldShow,
+    jobStartsInWeek: jobStartsInWeek,
+    jobVisible: jobVisible,
 
     // 週データ
     subscribeWeek: subscribeWeek,
@@ -1377,6 +1421,8 @@
     nameWithMarks: nameWithMarks,
     nextOrd: nextOrd,
     rememberWeek: rememberWeek,
+    setWeekShow: setWeekShow,
+    usedJobsInWeek: usedJobsInWeek,
 
     // 状態
     computeDay: computeDay,

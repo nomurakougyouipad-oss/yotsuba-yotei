@@ -66,6 +66,10 @@
             }
           },
 
+          "show": {
+            "$jobId": { ".validate": "newData.isBoolean()" }
+          },
+
           "updatedAt": { ".validate": "newData.isNumber()" },
           "updatedBy": { ".validate": "newData.isString() && newData.val().length <= 20" },
 
