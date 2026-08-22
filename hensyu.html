@@ -41,7 +41,7 @@ button{font-family:inherit;white-space:nowrap;cursor:pointer}
 input{font-family:inherit}
 
 /* ============ 全体の枠 ============ */
-#app{display:flex;flex-direction:column;height:100vh;overflow:hidden;background:var(--kinari)}
+#app{display:flex;flex-direction:column;height:100vh;height:100dvh;overflow:hidden;background:var(--kinari)}
 /* 予定を組むタブだけ、表そのものをスクロールさせます(見出しを固定するため) */
 #body{
   flex:1;min-height:0;overflow-y:auto;
@@ -149,7 +149,7 @@ input{font-family:inherit}
 .pastmask.on{display:block}
 .pastpop{
   position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:47;
-  width:560px;max-width:calc(100vw - 24px);max-height:86vh;display:none;
+  width:560px;max-width:calc(100vw - 24px);max-height:86vh;max-height:86dvh;display:none;
   flex-direction:column;background:#fff;border-radius:14px;overflow:hidden;
   box-shadow:0 16px 44px rgba(43,42,38,.35);
 }
@@ -303,7 +303,7 @@ input{font-family:inherit}
 .jobpop{
   position:fixed;z-index:40;width:420px;max-width:calc(100vw - 24px);
   /* 画面からはみ出さないよう、高さに上限をつけて中身をスクロールさせます */
-  max-height:calc(100vh - 24px);
+  max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);
   background:#fff;border:1px solid var(--keisen);border-radius:12px;
   box-shadow:0 12px 32px rgba(43,42,38,.28);display:none;
   flex-direction:column;overflow:hidden;
@@ -377,7 +377,7 @@ input{font-family:inherit}
 .mask.on{display:block}
 .sheet{
   position:fixed;left:0;right:0;bottom:0;background:#fff;border-radius:18px 18px 0 0;
-  z-index:31;display:none;flex-direction:column;max-height:92vh;
+  z-index:31;display:none;flex-direction:column;max-height:92vh;max-height:92dvh;
   box-shadow:0 -8px 30px rgba(0,0,0,.25);
 }
 .sheet.on{display:flex}
@@ -429,7 +429,7 @@ input{font-family:inherit}
   position:fixed;z-index:45;display:none;background:#fff;
   border:1px solid var(--keisen);border-radius:12px;
   box-shadow:0 12px 32px rgba(43,42,38,.3);width:max-content;max-width:calc(100vw - 24px);
-  max-height:calc(100vh - 24px);flex-direction:column;overflow:hidden;
+  max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);flex-direction:column;overflow:hidden;
 }
 .markpop.on{display:flex}
 .markpop .in{overflow-y:auto}
@@ -721,6 +721,104 @@ input{font-family:inherit}
 }
 @media (max-width:1023px){
   .pconly{display:none !important}
+}
+
+/* =====================================================================
+   スマホを横向きにしたとき(幅1023px以下 かつ 横長)
+     ・PC版には切り替えず、スマホ用のレイアウトのまま使います
+     ・縦が狭くなるので、上まわりと下タブを薄くします
+     ・横が広くなるので、日付の列を伸ばして7日ぶん見えるようにします
+   ===================================================================== */
+@media (max-width:1023px) and (orientation:landscape){
+
+  /* ---- 上まわりを薄く ---- */
+  .head{padding:5px 12px}
+  .head .t{font-size:14px;font-weight:900}
+  .head .s{font-size:11px}
+  .obi{padding:4px 12px;font-size:12px}
+
+  .weeknav{padding:4px 10px;gap:6px}
+  .weeknav button{min-width:40px;min-height:32px;font-size:15px;border-radius:7px}
+  .weeknav button.now{padding:0 10px;font-size:13px}
+  .weeknav .lbl{line-height:1.15}
+  .weeknav .lbl b{font-size:15px}
+  .weeknav .lbl span{font-size:11px}
+
+  .cats{padding:5px 10px 4px;gap:6px}
+  .cats button{min-height:32px;padding:0 12px;font-size:13px;border-radius:16px}
+
+  .filterbar{padding:0 10px 5px;gap:8px}
+  .filterbar .seg button{min-height:30px;padding:0 12px;font-size:13px}
+  .filterbar .seg button:first-child{border-radius:15px 0 0 15px}
+  .filterbar .seg button:last-child{border-radius:0 15px 15px 0}
+  .filterbar .pick2{min-height:30px;padding:0 12px;font-size:13px;border-radius:15px}
+  .filterbar .fmsg{font-size:11px}
+
+  /* ---- 表 ----
+     日付の列を「最低84px・余った幅は山分け」にします。
+     画面が広ければ7日ぶんが一度に見え、狭ければ今までどおり横スクロールします。
+     工事名の列と曜日の行の固定は、縦向きと同じしくみのまま効きます      */
+  .grid{grid-template-columns:104px repeat(7,minmax(84px,1fr))}
+  .grid .job{padding:8px}
+  .grid .cell{padding:6px 5px}
+
+  /* ---- 下タブ:絵文字と文字を横に並べて薄くします ---- */
+  .tabs{padding:2px 4px calc(4px + env(safe-area-inset-bottom))}
+  .tabs button{
+    min-height:38px;padding:2px 0;
+    display:flex;align-items:center;justify-content:center;gap:6px;
+  }
+  .tabs button .i{font-size:16px}
+  .tabs button .l{font-size:12px}
+
+  /* ---- 名前を選ぶシート:縦が狭いので上下を詰めます ---- */
+  .sheet{max-height:96vh;max-height:96dvh}
+  .sheet .sh{padding:8px 14px}
+  .sheet .sh .j{font-size:16px}
+  .sheet .sh .d{font-size:13px}
+  .sheet .sb{padding:10px 12px 6px;gap:10px}
+  .sheet .sf{padding:8px 12px calc(10px + env(safe-area-inset-bottom))}
+  .sheet .sf button{min-height:42px;font-size:14px}
+  .sheet .sf .btn-ok{font-size:16px}
+
+  /* ---- 表に使える高さをかせぎます ----
+     ・カテゴリと絞り込みを、同じ行に横に並べます
+     ・「◀ 横にスワイプ ◀」の案内は、横向きでは7日ぶん全部見えるので消します
+     ・下の色の説明は薄くします                                        */
+  #body.plan{
+    display:grid;
+    grid-template-columns:minmax(0,auto) minmax(0,1fr);
+    grid-template-rows:auto auto minmax(0,1fr) auto;
+  }
+  #body.plan .weeknav{grid-column:1 / -1;grid-row:1}
+  #body.plan .cats{grid-column:1;grid-row:2;padding:5px 4px 4px 10px}
+  #body.plan .filterbar{
+    grid-column:2;grid-row:2;align-self:center;
+    justify-content:flex-end;padding:0 10px 0 6px;
+  }
+  /* 絞り込みは折り返さず1行に。件数の文だけを中で折り返します */
+  #body.plan .filterbar{flex-wrap:nowrap}
+  #body.plan .filterbar .fmsg{flex:1 1 auto;min-width:0;line-height:1.3;text-align:right}
+  /* ボタンが行の高さいっぱいに伸びないようにします */
+  #body.plan .cats{align-items:center}
+  #body.plan .gridwrap{grid-column:1 / -1;grid-row:3}
+  #body.plan .guide{display:none}
+  #body.plan .legend{grid-column:1 / -1;grid-row:4;padding:3px 12px 4px;font-size:11px;gap:12px}
+
+  /* 週の見出しは1行にまとめます */
+  .weeknav .lbl b{display:inline;font-size:14px}
+  .weeknav .lbl span{margin-left:6px}
+
+  /* ---- 配信の文面 ----
+     横向きだと1行が長くなりすぎて、LINEでの見え方と離れてしまうため、
+     幅を抑えて中央に置きます。コピーする中身は変わりません        */
+  .linebox{max-width:620px;margin:2px auto 0;padding:14px;font-size:15px;line-height:1.8}
+  .copywrap{max-width:620px;margin:0 auto;padding:10px 12px 8px}
+  .copyfall{max-width:620px;margin:0 auto 12px}
+  .copyfall textarea{min-height:120px}
+
+  /* ---- メンバー一覧は、横に広いので2列に ---- */
+  .wlist{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:10px 12px}
 }
 </style>
 </head>

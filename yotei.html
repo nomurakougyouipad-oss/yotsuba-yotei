@@ -42,7 +42,7 @@ body{
 button{font-family:inherit;white-space:nowrap;cursor:pointer}
 input{font-family:inherit}
 
-#app{display:flex;flex-direction:column;min-height:100vh}
+#app{display:flex;flex-direction:column;min-height:100vh;min-height:100dvh}
 
 /* ---- 上部 ---- */
 .head{
@@ -225,6 +225,56 @@ input{font-family:inherit}
 @media (min-width:700px){
   #app{max-width:600px;margin:0 auto;border-left:1px solid var(--keisen);border-right:1px solid var(--keisen)}
   .pick .list{grid-template-columns:repeat(3,1fr)}
+}
+
+/* =====================================================================
+   スマホを横向きにしたとき(幅1023px以下 かつ 横長)
+     ・上の「600pxに寄せる」は効かせず、画面幅をそのまま使います
+     ・縦が狭くなるので、上まわりと下タブを薄くします
+     ・横が広くなるので、カードを2列に並べて多く見えるようにします
+   ===================================================================== */
+@media (max-width:1023px) and (orientation:landscape){
+  #app{max-width:none;margin:0;border-left:0;border-right:0}
+
+  /* ---- 上まわりを薄く ---- */
+  .head{padding:5px 14px}
+  .head .t{font-size:15px;font-weight:900}
+  .head .chg{min-height:32px;padding:0 12px;font-size:13px;border-radius:16px}
+  .obi{padding:5px 14px;font-size:13px}
+
+  .weeknav{padding:4px 10px;gap:6px}
+  .weeknav button{min-width:44px;min-height:34px;font-size:17px;border-radius:8px}
+  .weeknav button.now{padding:0 12px;font-size:14px}
+  .weeknav .lbl b{font-size:16px}
+  .weeknav .lbl span{font-size:12px}
+
+  .mebar{padding:6px 14px}
+  .mebar .nm{font-size:18px}
+
+  .cats{padding:6px 12px 4px;gap:6px}
+  .cats button{min-height:34px;padding:0 12px;font-size:14px}
+  .daypills{padding:4px 10px 6px}
+  .daypills button{min-height:40px}
+  .filterbar{padding:0 12px 6px}
+  .filterbar .seg button{min-height:34px;font-size:13px}
+
+  /* ---- カードを2列に。見出しだけは横いっぱいに置きます ---- */
+  .days{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;align-items:start;padding:10px 12px}
+  .plan{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;align-items:start;padding:2px 12px 12px}
+  .cathd2{grid-column:1 / -1}
+
+  /* ---- 名前えらびは4列に ---- */
+  .pick{padding:10px 12px 18px}
+  .pick .list{grid-template-columns:repeat(4,1fr)}
+
+  /* ---- 下タブ:絵文字と文字を横に並べて薄くします ---- */
+  .tabs{padding:2px 4px calc(4px + env(safe-area-inset-bottom))}
+  .tabs button{
+    min-height:40px;padding:2px 0;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+  }
+  .tabs button .i{font-size:18px}
+  .tabs button .l{font-size:13px}
 }
 </style>
 </head>

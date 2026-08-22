@@ -69,7 +69,11 @@ button{font-family:inherit;white-space:nowrap;cursor:pointer}
 .obi.warn{background:#fbe9e5;color:var(--aka)}
 
 /* ---- 表 ---- */
-.wrap{overflow:auto;max-height:calc(100vh - 150px);background:#fff}
+.wrap{overflow:auto;max-height:calc(100vh - 150px);max-height:calc(100dvh - 150px);background:#fff}
+/* スマホを横向きにしたとき。縦が狭いので、表に使える高さを増やします */
+@media (max-width:1023px) and (orientation:landscape){
+  .wrap{max-height:calc(100dvh - 96px)}
+}
 table{border-collapse:separate;border-spacing:0;font-size:13px;width:max-content;min-width:100%}
 th,td{border-right:1px solid var(--keisen2);border-bottom:1px solid var(--keisen2);padding:4px 3px}
 thead th{
