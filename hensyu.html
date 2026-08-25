@@ -523,8 +523,17 @@ input{font-family:inherit}
 .grp.chosen .gt .sum{margin-left:0;color:var(--midori)}
 .grp.chosen .gt .hint4{margin-left:auto;font-size:12px;font-weight:700;color:var(--usu)}
 /* 人数が多いときは、この欄の中だけをスクロールさせます
-   (欄がどこまでも伸びて、下の名簿を押し下げてしまうのを防ぎます) */
-.grp.chosen .chips{max-height:160px;overflow-y:auto;overscroll-behavior:contain}
+   (欄がどこまでも伸びて、下の名簿を押し下げてしまうのを防ぎます)
+   チップ1つが44px + すき間8px なので、4行ぶんを目安にしています。
+   スマホの幅だと10名でちょうど4行になります。 */
+.grp.chosen .chips{max-height:208px;overflow-y:auto;overscroll-behavior:contain}
+/* それでも下に隠れる人がいるときは、はっきり知らせます
+   (見えている数を数えて「1人足りない」と思われるのを防ぐため) */
+.grp.chosen .more5{
+  margin-top:6px;font-size:12px;font-weight:700;color:var(--midori);
+  background:#fff;border:1px dashed var(--midori);border-radius:8px;
+  padding:5px 8px;text-align:center;
+}
 /* 外す目印の ✕ は、名前から少し離して小さめに */
 .grp.chosen .chip .x{margin-left:6px;font-size:.85em;opacity:.85}
 /* 緑のチップの上でも、しるし(◎など)が読めるようにします */
@@ -956,8 +965,8 @@ input{font-family:inherit}
   .copyfall{max-width:620px;margin:0 auto 12px}
   .copyfall textarea{min-height:120px}
 
-  /* 「選んでいる人」の欄は、縦が狭いぶん低くします */
-  .grp.chosen .chips{max-height:88px}
+  /* 「選んでいる人」の欄は、縦が狭いぶん低くします(2行ぶん) */
+  .grp.chosen .chips{max-height:112px}
 
   /* ---- メンバー一覧は、横に広いので2列に ---- */
   .wlist{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:10px 12px}
@@ -2345,6 +2354,30 @@ input{font-family:inherit}
       c.appendChild(b);
     });
     wrap.appendChild(c);
+
+    // 下に隠れる人がいるかどうかは、並べてみないと分かりません
+    var more = el('div', 'more5', '');
+    wrap.appendChild(more);
+    markChosenOverflow(wrap);
+    c.addEventListener('scroll', function () { markChosenOverflow(wrap); });
+  }
+
+  /**
+   * 欄の中で下に隠れているチップの数を知らせます。
+   * スマホの幅では10名で4行を超えることがあり、見えている数だけ数えると
+   * 「1人足りない」と思えてしまうためです。
+   */
+  function markChosenOverflow(wrap) {
+    var c = wrap.querySelector('.chips');
+    var tag = wrap.querySelector('.more5');
+    if (!c || !tag) return;
+    var wb = c.getBoundingClientRect();
+    var n = 0;
+    Array.prototype.forEach.call(c.querySelectorAll('.chip'), function (x) {
+      if (x.getBoundingClientRect().bottom > wb.bottom + 1) n++;
+    });
+    tag.textContent = n ? '▼ 下にあと ' + n + '名(この欄は下にスクロールできます)' : '';
+    tag.style.display = n ? '' : 'none';
   }
 
   /** 欄を作り直します。
