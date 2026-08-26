@@ -38,6 +38,10 @@
   --sar:env(safe-area-inset-right,0px);
 }
 html,body{margin:0;padding:0}
+/* iOSの「端まで行ってから、もう少し動いて戻る」を止めます。
+   contain は「外側へ伝えない」だけで、跳ね返り自体は残ります。
+   止めるには none が要ります(横も縦も) */
+html,body{overscroll-behavior:none}
 body{
   background:var(--ji);font-family:'Noto Sans JP',sans-serif;color:var(--moji);
   font-size:16px;word-break:keep-all;-webkit-text-size-adjust:100%;
@@ -325,13 +329,16 @@ input{font-family:inherit}
 /* ============ 予定グリッド ============ */
 .gridwrap{
   overflow:auto;padding-bottom:4px;
-  overscroll-behavior:contain;      /* 端での跳ね返りを抑えます */
+  /* none にしないと、横に端まで行ったときの跳ね返りが残ります。
+     contain は「外側へ伝えない」だけで、跳ね返り自体は止まりません */
+  overscroll-behavior:none;
+  overscroll-behavior-x:none;       /* 念のため横だけも書いておきます */
   transform:translateZ(0);          /* 描画をGPUに任せて、固定した行と列のブレを抑えます */
 }
 #body.plan .gridwrap{flex:1;min-height:0}
 .grid{display:grid;grid-template-columns:112px repeat(7,86px);font-size:15px;min-width:min-content}
 /* 工事名の列は左に固定。横スワイプしても、どの工事か分かるようにします */
-.grid .job,.grid .rest,.grid .yohd{
+.grid .job,.grid .resthd,.grid .yohd{
   position:sticky;left:0;z-index:2;box-shadow:1px 0 0 var(--keisen);
   backface-visibility:hidden;        /* スクロール中のにじみ・ズレを抑えます */
 }
@@ -395,8 +402,23 @@ input{font-family:inherit}
 .grid .rest{background:var(--yasumi);border-bottom:1px solid var(--keisen);font-weight:700;color:var(--usu);padding:10px}
 .grid .cell.rest{background:var(--yasumi);border-left:1px solid #ddd8cb;color:var(--usu);text-align:center;font-weight:700}
 .grid .cell.rest.empty{color:#b9b3a2;font-size:15px}
-/* 余 行(PCのみ・読み取り専用) */
+/* 余 行(計算で出すだけ・読み取り専用) */
 .grid .yohd{background:var(--kiji);border-bottom:1px solid var(--kiwaku);font-weight:900;color:var(--ki);padding:10px 12px}
+
+/* --- 休み行・余行の見出し。どちらもたためます(既定はたたんだ状態) --- */
+.grid .resthd,.grid .yohd{display:flex;align-items:center;gap:6px}
+.grid .resthd .tg,.grid .yohd .tg{
+  order:-1;flex-shrink:0;                 /* 左端に置きます */
+  min-height:30px;padding:0 9px;border-radius:15px;
+  border:1px solid var(--keisen);background:#fff;color:var(--usu2);
+  font-size:13px;font-weight:900;line-height:28px;
+}
+.grid .yohd .tg{border-color:var(--kiwaku);color:var(--ki)}
+/* たたんでいるとき = 人数だけ */
+.grid .cell.rest.closed,.grid .yo.closed{text-align:center;padding:6px 5px}
+.grid .cell.rest.closed .big,.grid .yo.closed .big{font-size:17px;font-weight:900;line-height:1.35}
+.grid .yo.closed .big{color:var(--ki)}
+.grid .cell.rest.closed .none,.grid .yo.closed .none{font-size:14px;line-height:1.35;color:#b9b3a2}
 .grid .yo{
   padding:8px 6px;background:var(--kiji);border-bottom:1px solid var(--kiwaku);
   border-left:1px solid #f0e3c2;line-height:1.6;font-weight:600;color:#8a6516;
@@ -1108,7 +1130,8 @@ input{font-family:inherit}
     cat: 1,              // 1 / 2 / 3 / 'all'(PCのみ)
     week: { assign: {} },
     online: true,
-    yoOpen: false,       // PCの「余」行をひらいているか
+    restOpen: false,     // 「休み」行をひらいているか(既定はたたんだ状態)
+    yoOpen: false,       // 「余」行をひらいているか(既定はたたんだ状態)
     unsubWeek: null,
     fold: false,         // スマホで上部をたたんでいるか
     log: null,           // 履歴の画面を開いている間の中身
@@ -1427,22 +1450,21 @@ input{font-family:inherit}
         (dt.getMonth() + 1) + '/' + dt.getDate() + '</span>'));
     });
 
-    // 休み行(いちばん上に固定)
-    g.appendChild(el('div', 'rest', '休み'));
+    // 休み行(いちばん上に固定)。たためます
+    var rh = el('div', 'rest resthd', '<span>休み</span>');
+    rh.appendChild(rowToggle(S.restOpen, '休みの人', function () {
+      S.restOpen = !S.restOpen; render();
+    }));
+    g.appendChild(rh);
     days.forEach(function (d) { g.appendChild(restCell(d, st[d])); });
 
-    // 🟡 余 行(PCのみ・読み取り専用)
-    if (isPC()) {
-      var yh = el('div', 'yohd', '<span>🟡 余</span>');
-      var tg = document.createElement('button');
-      tg.className = 'tg';
-      tg.textContent = S.yoOpen ? '▴' : '▾';
-      tg.title = S.yoOpen ? '余っている人をたたむ' : '余っている人をひらく';
-      tg.addEventListener('click', function () { S.yoOpen = !S.yoOpen; render(); });
-      yh.appendChild(tg);
-      g.appendChild(yh);
-      days.forEach(function (d) { g.appendChild(yoCell(st[d])); });
-    }
+    // 🟡 余 行(計算で出すだけ・読み取り専用)。たためます
+    var yh = el('div', 'yohd', '<span>🟡 余</span>');
+    yh.appendChild(rowToggle(S.yoOpen, '余っている人', function () {
+      S.yoOpen = !S.yoOpen; render();
+    }));
+    g.appendChild(yh);
+    days.forEach(function (d) { g.appendChild(yoCell(st[d])); });
 
     // 工事の行
     var used = usedJobIds();
@@ -2079,10 +2101,32 @@ input{font-family:inherit}
     return b;
   }
 
+  /** 行をたたむ・ひらくボタン(休み行と余行で共通) */
+  function rowToggle(open, what, onClick) {
+    var b = document.createElement('button');
+    b.className = 'tg';
+    b.textContent = open ? '▴' : '▾';
+    b.title = what + (open ? 'をたたむ' : 'をひらく');
+    b.addEventListener('click', function (e) { e.stopPropagation(); onClick(); });
+    return b;
+  }
+
   function restCell(dateKey, day) {
     var b = document.createElement('button');
-    b.className = 'cell rest' + (YY.isToday(dateKey) ? ' today' : '');
+    b.className = 'cell rest' + (YY.isToday(dateKey) ? ' today' : '') +
+      (S.restOpen ? '' : ' closed');
     var d = YY.displayCell(S.week, YY.REST_KEY, dateKey);
+
+    // たたんでいるとき = 人数だけ。押せば今までどおり直せます
+    if (!S.restOpen) {
+      b.innerHTML = d.count
+        ? '<div class="big">' + d.count + '名</div>'
+        : '<div class="none">—</div>';
+      b.title = d.count ? d.rows.map(YY.nameWithMarks).concat(d.extras).join('・') : '';
+      b.addEventListener('click', function () { openSheet(YY.REST_KEY, dateKey); });
+      return b;
+    }
+
     if (d.count === 0) {
       b.classList.add('empty');
       b.textContent = '—';
