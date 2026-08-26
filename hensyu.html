@@ -406,7 +406,8 @@ input{font-family:inherit}
 .grid .yohd{background:var(--kiji);border-bottom:1px solid var(--kiwaku);font-weight:900;color:var(--ki);padding:10px 12px}
 
 /* --- 休み行・余行の見出し。どちらもたためます(既定はたたんだ状態) --- */
-.grid .resthd,.grid .yohd{display:flex;align-items:center;gap:6px}
+/* 上ぞろえ。行が高くなったとき、見出しが空白の真ん中に浮かないようにします */
+.grid .resthd,.grid .yohd{display:flex;align-items:flex-start;gap:6px}
 .grid .resthd .tg,.grid .yohd .tg{
   order:-1;flex-shrink:0;                 /* 左端に置きます */
   min-height:30px;padding:0 9px;border-radius:15px;
@@ -425,6 +426,10 @@ input{font-family:inherit}
 }
 .grid .yo .cnt{font-size:11px;color:var(--ki);font-weight:700}
 .grid .yo .none{text-align:center;color:#d8c391}
+/* 余は「・」でつないで折り返します(1人1行だと土日にとても長くなります) */
+.grid .yo{word-break:break-all;overflow-wrap:anywhere}
+.grid .yo .sep{color:#d8c391;font-weight:400}
+.grid .yo .more2{margin-left:4px;font-size:11px;font-weight:700;color:var(--ki)}
 .grid .yo .plus{border:none;background:#f3e2b6;color:#8a6516;border-radius:10px;padding:1px 8px;font-size:12px;font-weight:700}
 /* カテゴリ見出し(PCの「すべて」) */
 .grid .cathd{
@@ -447,11 +452,15 @@ input{font-family:inherit}
 .grid .job .kept{
   margin-top:4px;background:var(--yasumi);border:1px solid var(--keisen);
   border-radius:6px;padding:3px 6px;
+  /* 日本語を途中で折れるようにします。これが無いと1行のまま伸びて、
+     列からはみ出し、日付のセルの名前に重なります */
+  word-break:break-all;overflow-wrap:anywhere;
 }
 .grid .job .kept .badge{font-size:11px;font-weight:700;color:var(--usu2);line-height:1.3}
-.grid .job .kept .why{font-size:10px;color:var(--usu);line-height:1.3;margin-top:1px}
 /* 開始日が来ているのに、まだ人が入っていない工事 */
 .grid .job .waiting{
+  /* 札と同じく、日本語を途中で折れるようにします */
+  word-break:break-all;overflow-wrap:anywhere;
   margin-top:3px;display:inline-block;background:var(--kiji);border:1px solid var(--kiwaku);
   border-radius:6px;padding:1px 6px;font-size:10px;font-weight:700;color:var(--ki);line-height:1.4;
 }
@@ -1659,15 +1668,17 @@ input{font-family:inherit}
       (bi ? '<div class="seitag">' + esc(bi.label) + '</div>' : '') +
       (waiting ? '<div class="waiting">' + esc(mdLabel(j.start)) + ' 開始・まだ人なし</div>' : '') +
       // 「隠す」にしたのに表にある工事は、その理由をはっきり出します
+      // 「表から隠す」にしてあるのに予定が入っている工事だけ、その旨を出します。
+      // 列が狭いので短く。くわしい説明は、この升に触れたときの吹き出しに入れています
       (!j.active
-        ? '<div class="kept">' +
-          '<div class="badge">予定が入っているため表示中</div>' +
-          '<div class="why">予定を空にすると表から消えます</div>' +
-          '</div>'
+        ? '<div class="kept"><div class="badge">⊘ 隠す設定・予定あり</div></div>'
         : '');
     c.title = j.name + (j.no ? '(' + j.no + ')' : '') +
       (bi ? '\n' + bi.title + '(集計ページで切り替えます)' : '') +
-      (!j.active ? '\nこの工事は「表から隠す」にしていますが、予定が入っているので表示しています' : '') +
+      (!j.active
+        ? '\nこの工事は「表から隠す」にしていますが、予定が入っているので表示しています' +
+          '\n予定を空にすると表から消えます'
+        : '') +
       '\nクリックで工事を直せます';
     c.addEventListener('click', function (e) {
       e.stopPropagation();
@@ -2143,6 +2154,9 @@ input{font-family:inherit}
    * その日の「余」(計算で出すだけ。押しても何も起きません)
    * たたんでいるとき = 人数だけ。ひらいたとき = 名前を並べます
    */
+  /** 余の行に出す人数の上限。土日はほぼ全員が余になるので、途中で切ります */
+  var YO_LIMIT = 8;
+
   function yoCell(day) {
     var d = document.createElement('div');
     var names = day.free;
@@ -2158,9 +2172,19 @@ input{font-family:inherit}
 
     d.className = 'yo';
     if (!names.length) { d.innerHTML = '<div class="none">—</div>'; return d; }
-    d.innerHTML = joinNames(names.map(function (n) {
+
+    /* ひらいたときも「1人1行」にはしません。土日はほぼ全員が余になるため、
+       スマホだと74人=1810px の行になってしまいます。
+       人数の上限だけ決めて、多い日は「ほか○名」でまとめます。
+       つなぎ方は表と同じ(スマホは1人1行、PCは「・」区切り)にしています。 */
+    var shown = names.slice(0, YO_LIMIT);
+    var more = names.length - shown.length;
+    d.innerHTML = joinNames(shown.map(function (n) {
       return '<span class="nm' + (YY.isCoop(n) ? ' coop' : '') + '">' + esc(n) + '</span>';
-    })) + '<div class="cnt">' + names.length + '名</div>';
+    })) +
+      (more > 0 ? '<span class="more2">ほか' + more + '名</span>' : '') +
+      '<div class="cnt">' + names.length + '名</div>';
+    d.title = names.join('・');
     return d;
   }
 
