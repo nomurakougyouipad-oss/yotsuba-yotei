@@ -80,9 +80,18 @@
      工事名で指しています。増減するときはここだけ直してください */
   var FACTORY_JOBS = ['工場（入場あり）', '工場（応援入場あり）', '工場（応援）'];
 
-  /* LINEの文面に出さない工事。こちらも工事名で指しています。
+  /* LINEの文面に出さない工事。工事名の「前のほう」で見ます。
+     '緑化部' と書いておけば、「緑化部」「緑化部 応援」
+     「緑化部 ハーモニープラザ 溶接」のように緑化部で始まる工事は
+     すべて外れます。新しい緑化部の工事が増えても、直さずに済みます。
      「休み」の行も出しません(下の lineLines を参照) */
-  var LINE_SKIP_JOBS = ['緑化部'];
+  var LINE_SKIP_PREFIXES = ['緑化部'];
+
+  /** その工事名が、配信に出さない工事かどうか */
+  function isLineSkipped(name) {
+    var t = String(name == null ? '' : name);
+    return LINE_SKIP_PREFIXES.some(function (p) { return t.indexOf(p) === 0; });
+  }
 
   var OPERATOR = '事務所';                    // 名前をまだ決めていないときの既定
   var OPERATOR_KEY = 'yotsuba.yotei.operator';
@@ -1315,7 +1324,7 @@
     function pushJob(id) {
       var c = displayCell(week, id, dateKey);
       if (!c.count) return;                       // 人がいない工事は出しません
-      if (LINE_SKIP_JOBS.indexOf(jobLabel(id).name) >= 0) return;   // 配信に出さない工事
+      if (isLineSkipped(jobLabel(id).name)) return;       // 配信に出さない工事
 
       // 工事と工事のあいだに空行を入れます(LINEで読みやすくするため)
       if (shown) out.push({ kind: 'blank', text: '' });
@@ -1602,7 +1611,8 @@
     DOW: DOW,
 
     // 選択シートとLINEの、対象にする/しない工事
-    FACTORY_JOBS: FACTORY_JOBS, LINE_SKIP_JOBS: LINE_SKIP_JOBS,
+    FACTORY_JOBS: FACTORY_JOBS,
+    LINE_SKIP_PREFIXES: LINE_SKIP_PREFIXES, isLineSkipped: isLineSkipped,
 
     // 保存するときの名前
     getOperator: getOperator, setOperator: setOperator, operatorName: operatorName,
