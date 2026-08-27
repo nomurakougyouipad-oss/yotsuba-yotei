@@ -76,6 +76,14 @@
   // ほかのしるしに意味は持たせません(集計では1人=1として数えます)
   var MARKS = ['', '◎', '△', '☆', '✕'];
   var MARK_MAX = 4;
+  /* 選択シートの「🏭 工場の人」に出す工事。
+     工事名で指しています。増減するときはここだけ直してください */
+  var FACTORY_JOBS = ['工場（入場あり）', '工場（応援入場あり）', '工場（応援）'];
+
+  /* LINEの文面に出さない工事。こちらも工事名で指しています。
+     「休み」の行も出しません(下の lineLines を参照) */
+  var LINE_SKIP_JOBS = ['緑化部'];
+
   var OPERATOR = '事務所';                    // 名前をまだ決めていないときの既定
   var OPERATOR_KEY = 'yotsuba.yotei.operator';
   var OPERATOR_MAX = 20;                     // ルールの updatedBy と同じ上限
@@ -1302,9 +1310,16 @@
         '(' + DOW[dowIndex(dateKey)] + ')　予定】'
     }];
 
+    var shown = 0;
+
     function pushJob(id) {
       var c = displayCell(week, id, dateKey);
       if (!c.count) return;                       // 人がいない工事は出しません
+      if (LINE_SKIP_JOBS.indexOf(jobLabel(id).name) >= 0) return;   // 配信に出さない工事
+
+      // 工事と工事のあいだに空行を入れます(LINEで読みやすくするため)
+      if (shown) out.push({ kind: 'blank', text: '' });
+      shown++;
       out.push({ kind: 'job', text: '■' + jobLabel(id).name });
       // text はコピーされる中身。items は画面で色を付けるためのものです
       chunkNames(cellItems(c)).forEach(function (row) {
@@ -1325,15 +1340,7 @@
       pushJob(id);
     });
 
-    var rest = displayCell(week, REST_KEY, dateKey);
-    var restItems = cellItems(rest);
-    out.push({
-      kind: 'rest',
-      items: restItems,
-      text: '■休み:' + (restItems.length
-        ? restItems.map(function (it) { return it.mark + it.name; }).join('・')
-        : 'なし')
-    });
+    // 「休み」は配信に出しません(社内で見るものなので)
 
     out.push({ kind: 'blank', text: '' });
     out.push({ kind: 'foot', text: '※変更あれば返信ください' });
@@ -1593,6 +1600,9 @@
     cleanMark: cleanMark,
     cellItems: cellItems,
     DOW: DOW,
+
+    // 選択シートとLINEの、対象にする/しない工事
+    FACTORY_JOBS: FACTORY_JOBS, LINE_SKIP_JOBS: LINE_SKIP_JOBS,
 
     // 保存するときの名前
     getOperator: getOperator, setOperator: setOperator, operatorName: operatorName,

@@ -567,6 +567,11 @@ input{font-family:inherit}
 .copyprev span{font-size:13px;font-weight:600;color:var(--usu2)}
 .grp{}
 .grp.yo{background:var(--kiji);border:1px solid var(--kiwaku);border-radius:12px;padding:12px}
+/* 🏭 工場の人。名簿より上に置きます */
+.grp.fac{background:#eef2f7;border:1px solid #cbd8e6;border-radius:12px;padding:12px}
+.grp.fac .gt{color:#2c5f8f}
+.grp.fac .gt .sum{color:#2c5f8f}
+.grp.fac .ghint{color:#5b7fa6}
 .grp .gt{font-size:15px;font-weight:900;color:var(--ki);margin-bottom:10px}
 .grp .gt.sub{font-size:14px;font-weight:700;color:var(--usu);margin-bottom:8px}
 .grp .gt .sum{margin-left:8px;font-size:13px;font-weight:700;color:#8a6516}
@@ -2254,6 +2259,47 @@ input{font-family:inherit}
     $('sheet').classList.remove('on');
   }
 
+  /**
+   * 同じ人のチップは「工場の人」と「名簿」の2か所に出ます。
+   * どちらを押しても両方の色が変わるよう、名前ごとに覚えておきます。
+   */
+  function rememberChip(name, unknown) {
+    var sh = S.sheet;
+    var b = pickChip(name, unknown);
+    sh.chipEls[name] = sh.chipEls[name] || [];
+    sh.chipEls[name].push({ el: b, unknown: unknown });
+    return b;
+  }
+
+  /** その人のチップを、出ている場所すべて塗り替えます */
+  function restyleChips(name) {
+    var sh = S.sheet; if (!sh) return;
+    (sh.chipEls[name] || []).forEach(function (x) {
+      if (document.body.contains(x.el)) styleChip(x.el, name, x.unknown);
+    });
+  }
+
+  /**
+   * その日「工場(入場あり/応援入場あり/応援)」に入っている人。
+   * 対象の工事は common.js の FACTORY_JOBS で決めています。
+   */
+  function factoryNames(day) {
+    var ids = {};
+    YY.master.jobs.forEach(function (j) {
+      if (YY.FACTORY_JOBS.indexOf(j.name) >= 0) ids[j.id] = true;
+    });
+    var order = {};
+    YY.master.workers.forEach(function (w, i) { order[w.name] = i; });
+
+    return Object.keys((day && day.placements) || {}).filter(function (nm) {
+      return (day.placements[nm] || []).some(function (k) { return ids[k]; });
+    }).sort(function (a, b) {                      // 名簿の順に並べます
+      var x = (order[a] === undefined) ? 9999 : order[a];
+      var y = (order[b] === undefined) ? 9999 : order[b];
+      return x - y;
+    });
+  }
+
   function refreshSheet() {
     var sh = S.sheet; if (!sh) return;
     var day = YY.computeDay(S.week, sh.dateKey);
@@ -2331,17 +2377,34 @@ input{font-family:inherit}
        並び順は名簿順で固定。選んでもチップは動きません
        ------------------------------------------------------------------- */
     sh.day = day;
+    sh.chipEls = {};        // 名前 → その名前のチップ(2か所に出ることがあります)
+
+    /* --- 🏭 工場の人 -------------------------------------------------
+       その日「工場」に入っている人は、そこから抜いて別の工事に回すことが
+       多いので、名簿より上にまとめて出します。
+       押したときの動き(移動の確かめ)は名簿のチップと同じです。
+       ----------------------------------------------------------------- */
+    var fac = factoryNames(day);
+    if (fac.length) {
+      var gf = el('div', 'grp fac',
+        '<div class="gt">🏭 工場の人<span class="sum">' + fac.length + '名</span></div>');
+      var cf = el('div', 'chips', '');
+      fac.forEach(function (nm) {
+        cf.appendChild(rememberChip(nm, !YY.isKnown(nm)));
+      });
+      gf.appendChild(cf);
+      gf.appendChild(el('div', 'ghint',
+        'タップすると、この工事へ移すか確かめます'));
+      body.appendChild(gf);
+    }
+
     var g1 = el('div', 'grp yo',
       '<div class="gt">🟡 だれを入れますか<span id="yoSum" class="sum"></span></div>');
     var c1 = el('div', 'chips', '');
     var listed = YY.selectableWorkers(sh.members);
     sh.listed = listed;
-    // 上の欄から外したときに、下のチップの色だけを塗り替えるため覚えておきます
-    sh.chipEls = {};
     listed.forEach(function (w) {
-      var b = pickChip(w.name, w.unknown);
-      sh.chipEls[w.name] = b;
-      c1.appendChild(b);
+      c1.appendChild(rememberChip(w.name, w.unknown));
     });
     if (!listed.length) {
       c1.innerHTML = '<div style="font-size:14px;color:#8a6516">' +
@@ -2522,8 +2585,7 @@ input{font-family:inherit}
     delete sh.members[name];
     // よそのセルから連れてくる予約もしていたら、あわせて取り消します
     sh.moves = sh.moves.filter(function (mv) { return mv.name !== name; });
-    var b = sh.chipEls && sh.chipEls[name];
-    if (b) styleChip(b, name, !YY.isKnown(name));
+    restyleChips(name);
     updateCount();
   }
 
@@ -2604,8 +2666,8 @@ input{font-family:inherit}
         sh.members[name] = { mark: '', ord: YY.nextOrd(sh.members) };
       }
 
-      // 描き直さずに、押したチップと下の表示だけ更新します(スクロールが動きません)
-      styleChip(b, name, unknown);
+      // 描き直さずに、その人のチップと下の表示だけ更新します(スクロールが動きません)
+      restyleChips(name);
       updateCount();
     });
     return b;
@@ -2635,7 +2697,7 @@ input{font-family:inherit}
       if (mk === YY.FOREMAN_MARK) b.title = 'このマスの職長';
       b.addEventListener('click', function () {
         sh.members[name].mark = mk;
-        styleChip(chip, name, unknown);
+        restyleChips(name);
         closeMarkPop();
         updateCount();
       });
@@ -2653,7 +2715,7 @@ input{font-family:inherit}
     fi.addEventListener('click', function (e) { e.stopPropagation(); });
     var apply = function () {
       sh.members[name].mark = YY.cleanMark(fi.value);
-      styleChip(chip, name, unknown);
+      restyleChips(name);
       closeMarkPop();
       updateCount();
     };
@@ -2678,7 +2740,7 @@ input{font-family:inherit}
     off.addEventListener('click', function () {
       delete sh.members[name];
       sh.moves = sh.moves.filter(function (m) { return m.name !== name; });
-      styleChip(chip, name, unknown);
+      restyleChips(name);
       closeMarkPop();
       updateCount();
     });
@@ -2928,8 +2990,7 @@ input{font-family:inherit}
         d.innerHTML = '&nbsp;';
       } else if (x.items && x.items.length) {
         // 中身はコピーされる文字と同じ。しるしにだけ色を付けています
-        var pre = (x.kind === 'rest') ? '■休み:' : '';
-        d.innerHTML = pre + x.items.map(function (it) {
+        d.innerHTML = x.items.map(function (it) {
           return (it.mark ? '<span class="sc">' + esc(it.mark) + '</span>' : '') + esc(it.name);
         }).join('<span class="sep">・</span>');
       } else {
