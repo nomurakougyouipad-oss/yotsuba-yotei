@@ -2111,7 +2111,7 @@ input{font-family:inherit}
       b.classList.add('empty');
       b.innerHTML = '＋';
     } else {
-      b.innerHTML = cellInner(d, day, jobKey);
+      b.innerHTML = cellInner(d, day, jobKey, dateKey);
     }
     b.addEventListener('click', function () { openSheet(jobKey, dateKey); });
     return b;
@@ -2199,13 +2199,25 @@ input{font-family:inherit}
    *   スマホ … 1人1行なので改行のまま
    */
   function joinNames(list) {
-    return list.join(isPC() ? '<span class="sep">・</span>' : '<br>');
+    /* PCは「・」でつなぎます。このページは日本語を途中で折らない設定
+       (word-break:keep-all)なので、そのままだと名前がつながったまま
+       横に伸びて、となりの列にはみ出します。
+       区切りのうしろに <wbr> を入れて、名前の切れ目でだけ折り返させます
+       (名前の途中では折れません)。 */
+    return list.join(isPC() ? '<span class="sep">・</span><wbr>' : '<br>');
   }
 
-  function cellInner(d, day, jobKey) {
+  /* セルに出す人数の上限。PCは土日の列を平日の0.7倍にしているので、
+     土日だけ少なめにします(名前がはみ出したり隠れたりするため)。
+     スマホは7日とも同じ幅なので、平日と同じ5名のままです。 */
+  var CELL_LIMIT = 5;
+  var CELL_LIMIT_WEEKEND = 3;
+
+  function cellInner(d, day, jobKey, dateKey) {
     var all = d.rows.map(function (r) { return nameHTML(r, day, jobKey); })
       .concat(d.extras.map(function (x) { return '<span class="nm">' + esc(x) + '</span>'; }));
-    var lim = 5;
+    var lim = (isPC() && dateKey && YY.isWeekend(dateKey))
+      ? CELL_LIMIT_WEEKEND : CELL_LIMIT;
     var shown = all.slice(0, lim);
     var more = all.length - shown.length;
     return joinNames(shown) +
