@@ -1163,7 +1163,8 @@ input{font-family:inherit}
     markChip: null,      // しるしの吹き出しを出しているチップ
     editJob: null,       // 吹き出しで開いている工事id('__new__' なら新規)
     editCat: 1,          // その吹き出しで選んでいるカテゴリ
-    editNewCat: null     // 新規追加のとき、どのカテゴリの「＋」から開いたか
+    editNewCat: null,    // 新規追加のとき、どのカテゴリの「＋」から開いたか
+    gridKey: ''          // 表を最後に描いたときの「どの一覧か」。スクロール位置を戻す判定に使います
   };
 
   var $ = function (id) { return document.getElementById(id); };
@@ -1421,6 +1422,18 @@ input{font-family:inherit}
       YY.master.membersLoaded && !YY.master.workers.length && S.tab !== 'members');
 
     var b = $('body');
+
+    /* 表のスクロール位置。
+       予定を保存すると Firebase から届いた新しい中身で表を描き直すため、
+       そのままだと毎回いちばん上に戻ってしまいます。
+       同じ一覧(同じ週・カテゴリ・絞り込み)を描き直すときだけ、見ていた場所に戻します。
+       週やカテゴリを変えたときは、今までどおり先頭から見せます。 */
+    var gwKey = S.tab + '|' + S.monday + '|' + S.cat + '|' + S.onlyUsed;
+    var gwOld = b.querySelector('.gridwrap');
+    var gwPos = (gwOld && gwKey === S.gridKey)
+      ? { top: gwOld.scrollTop, left: gwOld.scrollLeft } : null;
+    S.gridKey = gwKey;
+
     b.innerHTML = '';
     b.className = (S.tab === 'plan') ? 'plan' : '';
     drawLastEdit();
@@ -1430,6 +1443,12 @@ input{font-family:inherit}
     else if (S.tab === 'line') renderLine(b);
     else if (S.tab === 'members') renderMembers(b);
     else renderPlan(b);
+
+    // 覚えておいたスクロール位置に戻します(中身が短くなっていれば、そのぶん詰めて表示されます)
+    if (gwPos) {
+      var gwNew = b.querySelector('.gridwrap');
+      if (gwNew) { gwNew.scrollTop = gwPos.top; gwNew.scrollLeft = gwPos.left; }
+    }
 
     // 工事やメンバーの吹き出しを開いている最中に描き直しが入ったら、位置を合わせ直します
     if (S.editJob) {
