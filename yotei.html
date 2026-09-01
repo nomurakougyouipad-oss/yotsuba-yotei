@@ -168,6 +168,7 @@
     restOpen: false,    // 「休み」行をひらいているか(既定はたたんだ状態)
     yoOpen: false,      // 「余」行をひらいているか(既定はたたんだ状態)
     openCells: {},      // 「+ほか○名」を開いたマス
+    viewKey: '',        // 画面を最後に描いたときの「どの一覧か」。スクロール位置を戻す判定に使います
     online: true,
     nearBase: null,
     nearWeeks: {},      // 直近4週ぶん(最後に人が入った日を調べます)
@@ -302,6 +303,27 @@
     $('btnChange').style.display = (S.tab === 'me' && S.me && !S.picking) ? '' : 'none';
 
     var b = $('body');
+
+    /* スクロール位置を覚えておきます。
+       中身を作り直す(innerHTML を空にする)と、そのままでは必ず先頭に戻ってしまうため、
+       表の下のほうで「+ほか○名」を押しただけでも画面が飛んでいました。
+       同じ一覧(同じ週・カテゴリ・絞り込み)を描き直すときだけ、見ていた場所に戻します。
+       週やカテゴリを変えたときは、今までどおり先頭から見せます。
+       予定表は表そのもの(.gridwrap)が、じぶんタブは #body が動くので、両方とも覚えます。
+       横の位置も残すので、スマホで横スワイプした先で押しても月曜まで巻き戻りません。 */
+    var vKey = (S.tab === 'plan')
+      ? 'plan|' + S.monday + '|' + S.cat + '|' + S.onlyUsed
+      : 'me|' + S.monday + '|' + S.me + '|' + S.picking;
+    var gwOld = b.querySelector('.gridwrap');
+    var keep = (vKey === S.viewKey)
+      ? {
+          body: b.scrollTop,
+          top: gwOld ? gwOld.scrollTop : 0,
+          left: gwOld ? gwOld.scrollLeft : 0
+        }
+      : null;
+    S.viewKey = vKey;
+
     b.className = (S.tab === 'plan') ? 'plan' : '';
     b.innerHTML = '';
     if (S.tab === 'me') {
@@ -309,6 +331,13 @@
       else renderMe(b);
     } else {
       renderPlan(b);
+    }
+
+    // 覚えておいた場所に戻します(中身が短くなっていれば、そのぶん詰めて表示されます)
+    if (keep) {
+      b.scrollTop = keep.body;
+      var gwNew = b.querySelector('.gridwrap');
+      if (gwNew) { gwNew.scrollTop = keep.top; gwNew.scrollLeft = keep.left; }
     }
   }
 
