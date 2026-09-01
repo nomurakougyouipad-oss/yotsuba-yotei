@@ -54,6 +54,11 @@
 <div class="namepop" id="namepop"></div>
 <div class="pastmask" id="pastmask"></div>
 <div class="pastpop" id="pastpop"></div>
+<!-- コピーで重なった人から「移動する人」を選ぶ画面。
+     見た目は「前に使った工事」と同じなので、
+     スタイル(.pastmask / .pastpop)をそのまま借りています -->
+<div class="pastmask" id="movemask"></div>
+<div class="pastpop" id="movepop"></div>
 <div class="daymask" id="daymask"></div>
 <div class="daypop" id="daypop"></div>
 <div class="toast" id="toast"></div>
@@ -980,22 +985,81 @@
   }
 
   /**
-   * 重複する人をどうするか、まとめて1回だけ確かめます。
-   *   戻り値 true  … 移す(呼び出し側で moves に積んでください)
-   *          false … 移さない(重複した人はコピーしません)
-   * 個別に選ぶときと同じで、行き先をはっきり伝えます。
+   * 重複する人を一覧で出して、「だれを移動するか」を選んでもらいます。
+   *   戻り値 … Promise。移動する人の名前の配列を返します(空なら誰も移しません)
+   * チェックをはずした人は、いまの工事にそのまま残り、コピーもしません。
+   * list が空のときは、画面を出さずに、すぐ空の配列を返します。
    */
   function askMove(list, toJobKey) {
-    if (!list.length) return false;
-    var lines = list.slice(0, 8).map(function (x) {
-      return '　・' + x.name + '(いまは「' + YY.jobLabel(x.from).name + '」)';
+    return new Promise(function (done) {
+      if (!list.length) { done([]); return; }
+
+      var pop = $('movepop'), mask = $('movemask');
+      var checked = {};
+      list.forEach(function (x) { checked[x.name] = true; });   // 既定は全員つけます
+
+      function picked() {
+        return list.filter(function (x) { return checked[x.name]; })
+                   .map(function (x) { return x.name; });
+      }
+
+      function close(names) {
+        pop.classList.remove('on');
+        mask.classList.remove('on');
+        pop.innerHTML = '';
+        mask.onclick = null;
+        done(names);
+      }
+
+      function draw() {
+        var h = ['<div class="ph"><div class="t2">🔁 だれを移動しますか</div>' +
+          '<div class="s2">' + list.length + '名は、この日すでに別の工事に入っています。<br>' +
+          'チェックを付けた人だけ「' + esc(YY.jobLabel(toJobKey).name) + '」へ移します。' +
+          'はずした人は、いまの工事にそのまま残します</div></div>'];
+
+        h.push('<div class="pbar">' +
+          '<button id="mall">全部つける</button>' +
+          '<button id="mnone">全部はずす</button>' +
+          '<span class="cnt4" id="mcnt"></span></div>');
+
+        h.push('<div class="pb">');
+        list.forEach(function (x, i) {
+          var on = !!checked[x.name];
+          h.push('<button class="prow' + (on ? ' on' : '') + '" data-i="' + i + '">' +
+            '<div class="box">' + (on ? '✓' : '') + '</div>' +
+            '<div><div class="jn2">' + esc(x.name) + '</div>' +
+            '<div class="sub3">いまは「' + esc(YY.jobLabel(x.from).name) + '」に入っています</div>' +
+            '</div></button>');
+        });
+        h.push('</div>');
+
+        h.push('<div class="pf"><button id="mcancel">やめる</button>' +
+          '<button class="ok2" id="mok">決定</button></div>');
+        pop.innerHTML = h.join('');
+
+        Array.prototype.forEach.call(pop.querySelectorAll('.prow'), function (b) {
+          b.addEventListener('click', function () {
+            var nm = list[+b.getAttribute('data-i')].name;
+            if (checked[nm]) delete checked[nm]; else checked[nm] = true;
+            draw();
+          });
+        });
+        $('mall').addEventListener('click', function () {
+          list.forEach(function (x) { checked[x.name] = true; });
+          draw();
+        });
+        $('mnone').addEventListener('click', function () { checked = {}; draw(); });
+        $('mcancel').addEventListener('click', function () { close([]); });
+        $('mok').addEventListener('click', function () { close(picked()); });
+
+        $('mcnt').textContent = picked().length + '名を移動します';
+      }
+
+      draw();
+      mask.onclick = function () { close([]); };   // 外を押したら、だれも移しません
+      mask.classList.add('on');
+      pop.classList.add('on');
     });
-    if (list.length > 8) lines.push('　・ほか' + (list.length - 8) + '名');
-    return confirm(
-      list.length + '名は、この日すでに別の工事に入っています。\n' +
-      lines.join('\n') + '\n\n' +
-      '「' + YY.jobLabel(toJobKey).name + '」に移動しますか?\n' +
-      '(いいえ を選ぶと、この人たちはコピーしません)');
   }
 
   function fromLastWeek(jobId, dateKey) {
@@ -1069,62 +1133,71 @@
       plan.push({ date: d, cell: c, clash: cl });
     });
 
-    // 重複する人をどうするか、1回だけ確かめます
-    var move = allClash.length ? askMove(dedupeNames(allClash), jobId) : false;
+    /* 重なった人は、一覧から「移動する人」を選んでもらいます(1回だけ)。
+       選ばれなかった人は、いまの工事に残し、コピーもしません */
+    askMove(dedupeNames(allClash), jobId).then(function (picked) {
+      var take = {};
+      picked.forEach(function (nm) { take[nm] = true; });
+      runCopy(take);
+    });
 
-    var jobs = [], copied = 0, moved = 0, skipped = 0;
-    plan.forEach(function (p) {
-      var members = p.cell.members, extras = p.cell.extras;
-      if (move && p.clash.length) {
-        var src = YY.cellOf(S.prevWeek || { assign: {} }, jobId, prevDate(p.date));
+    /** take = 移動する人 { 名前: true }。ここから先が、実際の書き込みです */
+    function runCopy(take) {
+      var jobs = [], copied = 0, movedNames = {}, restNames = {};
+      plan.forEach(function (p) {
+        var members = p.cell.members, extras = p.cell.extras;
+        var pv = YY.cellOf(S.prevWeek || { assign: {} }, jobId, prevDate(p.date));
         p.clash.forEach(function (x) {
+          if (!take[x.name]) { restNames[x.name] = true; return; }
           members[x.name] = {
-            mark: (src.members[x.name] || {}).mark || '',
+            mark: (pv.members[x.name] || {}).mark || '',
             ord: YY.nextOrd(members)
           };
           moveOut.push({ jobKey: x.from, dateKey: p.date, name: x.name });
-          moved++;
+          movedNames[x.name] = true;
         });
-      } else {
-        skipped += p.clash.length;
-      }
-      if (!Object.keys(members).length && !extras.length) return;
-      jobs.push(YY.saveCell(S.monday, jobId, p.date, { members: members, extras: extras }, '前週コピー'));
-      copied++;
-    });
-
-    // 連れてきた人を、元の工事から外します
-    var byCell = {};
-    moveOut.forEach(function (mv) {
-      var k = mv.jobKey + '|' + mv.dateKey;
-      byCell[k] = byCell[k] || { jobKey: mv.jobKey, dateKey: mv.dateKey, names: [] };
-      byCell[k].names.push(mv.name);
-    });
-    Object.keys(byCell).forEach(function (k) {
-      var mv = byCell[k];
-      var from = YY.cellOf(S.week, mv.jobKey, mv.dateKey);
-      var rest = {};
-      Object.keys(from.members).forEach(function (n) {
-        if (mv.names.indexOf(n) < 0) rest[n] = from.members[n];
+        if (!Object.keys(members).length && !extras.length) return;
+        jobs.push(YY.saveCell(S.monday, jobId, p.date, { members: members, extras: extras }, '前週コピー'));
+        copied++;
       });
-      jobs.push(YY.saveCell(S.monday, mv.jobKey, mv.dateKey, { members: rest, extras: from.extras }, '前週コピー'));
-    });
 
-    if (!jobs.length) {
-      toast(kept ? kept + 'マスは既に入っていたので、そのままです' : 'コピーするものがありませんでした');
-      return;
+      // 連れてきた人を、元の工事から外します
+      var byCell = {};
+      moveOut.forEach(function (mv) {
+        var k = mv.jobKey + '|' + mv.dateKey;
+        byCell[k] = byCell[k] || { jobKey: mv.jobKey, dateKey: mv.dateKey, names: [] };
+        byCell[k].names.push(mv.name);
+      });
+      Object.keys(byCell).forEach(function (k) {
+        var mv = byCell[k];
+        var from = YY.cellOf(S.week, mv.jobKey, mv.dateKey);
+        var rest = {};
+        Object.keys(from.members).forEach(function (n) {
+          if (mv.names.indexOf(n) < 0) rest[n] = from.members[n];
+        });
+        jobs.push(YY.saveCell(S.monday, mv.jobKey, mv.dateKey, { members: rest, extras: from.extras }, '前週コピー'));
+      });
+
+      if (!jobs.length) {
+        toast(kept ? kept + 'マスは既に入っていたので、そのままです' : 'コピーするものがありませんでした');
+        return;
+      }
+
+      // 人数は「のべ」ではなく、実際の人数で数えます
+      var moved = Object.keys(movedNames).length;
+      var stay = Object.keys(restNames).length;
+
+      closeJobPop();
+      Promise.all(jobs).then(function () {
+        var msg = copied + 'マスをコピーしました';
+        if (kept) msg += '(' + kept + 'マスは既に入っていたのでそのまま)';
+        if (moved) msg += ' / ' + moved + '名を移動しました';
+        if (stay) msg += ' / ' + stay + '名は、いまの工事に残しました';
+        toast(msg);
+      }).catch(function (e) {
+        toast('コピーできませんでした:' + (e && e.message ? e.message : ''));
+      });
     }
-
-    closeJobPop();
-    Promise.all(jobs).then(function () {
-      var msg = copied + 'マスをコピーしました';
-      if (kept) msg += '(' + kept + 'マスは既に入っていたのでそのまま)';
-      if (moved) msg += ' / ' + moved + '名を移動しました';
-      if (skipped) msg += ' / ' + skipped + '名は既に別の工事に入っているので入れていません';
-      toast(msg);
-    }).catch(function (e) {
-      toast('コピーできませんでした:' + (e && e.message ? e.message : ''));
-    });
   }
 
   function doMove(jobId, dir) {
@@ -1450,31 +1523,37 @@
       var src = YY.cellOf(S.week, sh.jobKey, prev);
       var all = Object.keys(src.members);
 
-      // その日すでに別の工事に入っている人は、確かめてから移します
+      // その日すでに別の工事に入っている人は、だれを移すか選んでもらいます
       var cl = clashes(all, sh.jobKey, sh.dateKey);
-      var move = cl.length ? askMove(cl, sh.jobKey) : false;
-      var skip = {};
-      if (!move) cl.forEach(function (x) { skip[x.name] = true; });
+      askMove(cl, sh.jobKey).then(function (picked) {
+        if (S.sheet !== sh) return;          // 選んでいる間に閉じられたとき
 
-      sh.members = {};
-      sh.moves = [];               // 入れ替わるので、連れてくる予約は取り消します
-      var n = 0;
-      all.forEach(function (nm) {
-        if (skip[nm]) return;
-        sh.members[nm] = { mark: (src.members[nm] || {}).mark || '', ord: n++ };
-      });
-      if (move) {
-        cl.forEach(function (x) {
-          sh.moves.push({ jobKey: x.from, dateKey: sh.dateKey, name: x.name });
+        var take = {}, skip = {};
+        picked.forEach(function (nm) { take[nm] = true; });
+        cl.forEach(function (x) { if (!take[x.name]) skip[x.name] = true; });
+
+        sh.members = {};
+        sh.moves = [];             // 入れ替わるので、連れてくる予約は取り消します
+        var n = 0;
+        all.forEach(function (nm) {
+          if (skip[nm]) return;    // はずした人は、いまの工事に残します
+          sh.members[nm] = { mark: (src.members[nm] || {}).mark || '', ord: n++ };
         });
-      }
-      sh.extras = src.extras.slice();
-      refreshSheet();
+        cl.forEach(function (x) {
+          if (take[x.name]) sh.moves.push({ jobKey: x.from, dateKey: sh.dateKey, name: x.name });
+        });
+        sh.extras = src.extras.slice();
+        refreshSheet();
 
-      if (cl.length) {
-        toast(move ? cl.length + '名を移動しました。「きめる」で確定します'
-                   : cl.length + '名は既に別の工事に入っているので入れていません');
-      }
+        if (cl.length) {
+          var parts = [];
+          if (picked.length) parts.push(picked.length + '名を移動しました');
+          if (cl.length - picked.length) {
+            parts.push((cl.length - picked.length) + '名は、いまの工事に残しました');
+          }
+          toast(parts.join(' / ') + '。「きめる」で確定します');
+        }
+      });
     });
     body.appendChild(pb);
 
@@ -1492,32 +1571,33 @@
     lw.addEventListener('click', function () {
       var src = YY.cellOf(S.prevWeek || { assign: {} }, sh.jobKey, prevDate(sh.dateKey));
       var c = fromLastWeek(sh.jobKey, sh.dateKey);
-      sh.members = c.members;
-      sh.extras = c.extras;
-      sh.moves = [];
 
-      // 重複する人は、確かめてから連れてきます
+      // 重複する人は、だれを連れてくるか選んでもらいます
       var cl = clashes(c.dropped, sh.jobKey, sh.dateKey);
-      var moved = 0;
-      if (cl.length && askMove(cl, sh.jobKey)) {
+      askMove(cl, sh.jobKey).then(function (picked) {
+        if (S.sheet !== sh) return;          // 選んでいる間に閉じられたとき
+        sh.members = c.members;
+        sh.extras = c.extras;
+        sh.moves = [];
+
+        var take = {};
+        picked.forEach(function (nm) { take[nm] = true; });
         cl.forEach(function (x) {
+          if (!take[x.name]) return;         // はずした人は、いまの工事に残します
           sh.members[x.name] = {
             mark: (src.members[x.name] || {}).mark || '',
             ord: YY.nextOrd(sh.members)
           };
           sh.moves.push({ jobKey: x.from, dateKey: sh.dateKey, name: x.name });
-          moved++;
         });
-      }
-      refreshSheet();
+        refreshSheet();
 
-      if (moved) {
-        toast('先週の' + lwDow + '曜から入れました(' + moved + '名は移動)。「きめる」で確定します');
-      } else if (c.dropped.length) {
-        toast(c.dropped.length + '名は既に別の工事に入っているので入れていません');
-      } else {
-        toast('先週の' + lwDow + '曜から入れました。「きめる」で確定します');
-      }
+        var moved = picked.length, stay = cl.length - moved;
+        var msg = '先週の' + lwDow + '曜から入れました';
+        if (moved) msg += '(' + moved + '名は移動)';
+        if (stay) msg += ' / ' + stay + '名は、いまの工事に残しました';
+        toast(msg + '。「きめる」で確定します');
+      });
     });
     body.appendChild(lw);
 

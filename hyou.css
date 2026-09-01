@@ -383,13 +383,14 @@ input{font-family:inherit}
 /* 確認用アプリ:隠れている人がいるマスは、押すと全員出ます */
 .grid .cell.canopen{cursor:pointer}
 .grid .cell.canopen:hover{background:#fbf9f2}
-.grid .cell.planned.canopen:hover{background:#fff2d4}
-/* 予定日の印。メンバーが入っても色は残します */
-.grid .cell.planned{background:#fff6e0}
-.grid .cell.planned.today{background:#fff2d4}
-.grid .cell.planned.empty{color:#c9a227}
+.grid .cell.planned.canopen:hover{background:#ffe97f}
+/* 予定日の印。メンバーが入っても色は残します。
+   余 行(うすいクリーム色 #fdf3dd)と紛らわしくないよう、はっきりした黄色にしています */
+.grid .cell.planned{background:#ffef9f}
+.grid .cell.planned.today{background:#ffe97f}
+.grid .cell.planned.empty{color:#8a6800}
 .grid .cell.planned::before{
-  content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:#e8b400;
+  content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:#f5c400;
 }
 .grid .cell{position:relative}
 
@@ -400,7 +401,7 @@ input{font-family:inherit}
   border:1px solid var(--keisen);background:#fff;color:var(--usu2);
   font-size:12px;font-weight:700;line-height:1.3;padding:2px 0;
 }
-.jobpop .days2 button.on{background:#e8b400;border-color:#e8b400;color:#3a2c00;font-weight:900}
+.jobpop .days2 button.on{background:#f5c400;border-color:#f5c400;color:#3a2c00;font-weight:900}
 .jobpop .days2 button b{display:block;font-size:13px}
 .jobpop .days2 button.sat{color:var(--kyoryoku)}
 .jobpop .days2 button.sun{color:var(--aka)}
@@ -588,7 +589,7 @@ input{font-family:inherit}
 }
 .copyprev:disabled{border-color:var(--keisen);background:#f4f1e9;color:#b9b3a2;cursor:default}
 .copyprev span{font-size:13px;font-weight:600;color:var(--usu2)}
-.copyprev.planoff{background:#fff6e0;border-color:#e8cf8a;color:#8a6516}
+.copyprev.planoff{background:#ffef9f;border-color:#f5c400;color:#6b5000}
 .grp{}
 .grp.yo{background:var(--kiji);border:1px solid var(--kiwaku);border-radius:12px;padding:12px}
 /* 🏭 工場の人。名簿より上に置きます */
