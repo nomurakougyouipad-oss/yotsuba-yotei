@@ -1359,8 +1359,8 @@
    *
    *   ※変更あれば返信ください
    *
-   * 工事の並びは表と同じ(カテゴリ→order)。名前の並びも表と同じで、
-   * ◎の人が先頭、そのあとは選んだ順です。
+   * 工事の並びは「週のすべて」タブと同じ ② → ① → ③(ALL_TAB_ORDER)。
+   * 名前の並びは表と同じで、◎の人が先頭、そのあとは選んだ順です。
    */
   function lineLines(week, dateKey) {
     var d = parseKey(dateKey);
@@ -1391,7 +1391,19 @@
       });
     }
 
-    master.jobs.forEach(function (j) { pushJob(j.id); });
+    /* 工事の並びは「週のすべて」タブと同じ ALL_TAB_ORDER
+         ② 常駐・工場 → ① 東レ工事 → ③ 外・出張ほか
+       分類の中の並びは、表と同じ(order → 名前)のままです。
+       どの分類にも当てはまらない工事があっても落とさないよう、最後に出します */
+    var doneJob = {};
+    ALL_TAB_ORDER.forEach(function (cat) {
+      master.jobs.forEach(function (j) {
+        if (j.category !== cat) return;
+        doneJob[j.id] = true;
+        pushJob(j.id);
+      });
+    });
+    master.jobs.forEach(function (j) { if (!doneJob[j.id]) pushJob(j.id); });
 
     // 表にない工事(消された工事)に人が残っていたら、それも出します
     var assign = (week && week.assign) || {};
