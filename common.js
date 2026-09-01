@@ -78,6 +78,11 @@
   var MARK_MAX = 4;
   /* 選択シートの「🏭 工場の人」に出す工事。
      工事名で指しています。増減するときはここだけ直してください */
+  /* 「週のすべて」タブで、分類を出す順番。
+     表のふつうの並び(CATEGORIES.order)とは別にしています。
+     集計など、ほかの並びには影響しません */
+  var ALL_TAB_ORDER = [2, 1, 3];             // ②常駐・工場 → ①東レ工事 → ③外・出張ほか
+
   var FACTORY_JOBS = ['工場（入場あり）', '工場（応援入場あり）', '工場（応援）'];
 
   /* LINEの文面に出さない工事。工事名の「前のほう」で見ます。
@@ -793,6 +798,7 @@
     v = v || {};
     return {
       assign: v.assign || {},
+      plan: v.plan || {},           // 予定日の印 { 工事id: { 日付: true } }
       show: v.show || {},          // 今週だけ表に出す工事 { 工事id: true }
       updatedAt: v.updatedAt || 0,
       updatedBy: v.updatedBy || ''
@@ -1183,6 +1189,51 @@
         console.warn('[common] 履歴を読めませんでした:', e);
         return [];
       });
+  }
+
+  /* ===================================================================
+     ■ 予定日の印(yotei/weeks/{週}/plan/{工事id}/{日付} = true)
+       メンバーが決まる前に「この工事は何日と何日にやる」と分かるように、
+       マスに色を付けるための印です。人の出入りとは別に持ちます。
+     =================================================================== */
+
+  /** その工事・その日に、予定日の印が付いているか */
+  function hasPlan(week, jobId, dateKey) {
+    return !!(((week && week.plan) || {})[jobId] || {})[dateKey];
+  }
+
+  /** その工事に印が付いている日の一覧(その週のぶん) */
+  function planDays(week, jobId) {
+    return Object.keys(((week && week.plan) || {})[jobId] || {}).sort();
+  }
+
+  /**
+   * 予定日の印を書き替えます。days は { 日付: true } の形。
+   * 渡した日だけ残し、ほかは消します(その工事のその週ぶん)。
+   */
+  function setPlanDays(mondayKey, jobId, days) {
+    initFirebase();
+    if (!validKey(jobId)) return Promise.reject(new Error('工事idが正しくありません'));
+    var week = weekDates(mondayKey), out = {};
+    week.forEach(function (d) { if ((days || {})[d]) out[d] = true; });
+    var patch = {};
+    patch['plan/' + jobId] = Object.keys(out).length ? out : null;
+    patch.updatedAt = firebase.database.ServerValue.TIMESTAMP;
+    patch.updatedBy = operatorName();
+    return yoteiDb.ref('yotei/weeks/' + mondayKey).update(patch);
+  }
+
+  /** その工事・その日の印だけを消します(選択シートから使います) */
+  function clearPlanDay(mondayKey, jobId, dateKey) {
+    initFirebase();
+    if (!validKey(jobId) || !validKey(dateKey)) {
+      return Promise.reject(new Error('工事idか日付が正しくありません'));
+    }
+    var patch = {};
+    patch['plan/' + jobId + '/' + dateKey] = null;
+    patch.updatedAt = firebase.database.ServerValue.TIMESTAMP;
+    patch.updatedBy = operatorName();
+    return yoteiDb.ref('yotei/weeks/' + mondayKey).update(patch);
   }
 
   /** その週に人が入っている工事id { id: true } */
@@ -1611,7 +1662,12 @@
     DOW: DOW,
 
     // 選択シートとLINEの、対象にする/しない工事
+    ALL_TAB_ORDER: ALL_TAB_ORDER,
     FACTORY_JOBS: FACTORY_JOBS,
+
+    // 予定日の印
+    hasPlan: hasPlan, planDays: planDays,
+    setPlanDays: setPlanDays, clearPlanDay: clearPlanDay,
     LINE_SKIP_PREFIXES: LINE_SKIP_PREFIXES, isLineSkipped: isLineSkipped,
 
     // 保存するときの名前

@@ -70,6 +70,14 @@
             "$jobId": { ".validate": "newData.isBoolean()" }
           },
 
+          "plan": {
+            "$jobId": {
+              "$date": {
+                ".validate": "$date.matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/) && newData.isBoolean() && newData.val() === true"
+              }
+            }
+          },
+
           "updatedAt": { ".validate": "newData.isNumber()" },
           "updatedBy": { ".validate": "newData.isString() && newData.val().length <= 20" },
 

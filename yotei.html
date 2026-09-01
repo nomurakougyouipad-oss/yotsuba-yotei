@@ -10,78 +10,22 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
+<link rel="stylesheet" href="hyou.css">
+
 <style>
 /* =====================================================================
-   確認用アプリ|見るだけ。編集の見た目も、書きこむコードもありません
-   スマホで見る前提。文字とタップ領域を大きめにしています
+   確認用アプリだけのスタイル
+     表まわり(週ナビ・カテゴリ・絞り込み・表・下タブなど)は、
+     編集アプリと同じ見た目にするため hyou.css から読んでいます。
+     ここに書くのは「じぶん」タブと「名前えらび」だけです。
    ===================================================================== */
-:root{
-  --midori:#1c4b34;
-  --kinari:#f5f1e8;
-  --ji:#e8e4d8;
-  --moji:#2b2a26;
-  --usu:#8a877c;
-  --usu2:#6b675c;
-  --keisen:#d9d3c4;
-  --keisen2:#e6e1d3;
-  --kyoryoku:#4a7c9b;
-  --shokucho:#3fae6a;
-  --aka:#b3402e;
-  --ki:#b07d1e;
-  --kiji:#fdf3dd;
-  --kiwaku:#ecd9ac;
-  --yasumi:#eceae2;
-  --kyo:#eef3ee;
-}
-*{box-sizing:border-box}
-/* iPhoneのノッチ(カメラの出っぱり)やホームバーで隠れる幅です。
-   縦向きや、ノッチのない端末では 0 になるので、見た目は変わりません */
-:root{
-  --sal:env(safe-area-inset-left,0px);
-  --sar:env(safe-area-inset-right,0px);
-}
-html,body{margin:0;padding:0}
-body{
-  background:var(--kinari);font-family:'Noto Sans JP',sans-serif;color:var(--moji);
-  font-size:16px;word-break:keep-all;-webkit-text-size-adjust:100%;
-}
-button{font-family:inherit;white-space:nowrap;cursor:pointer}
-input{font-family:inherit}
 
-#app{display:flex;flex-direction:column;min-height:100vh;min-height:100dvh}
-
-/* ---- 上部 ---- */
-.head{
-  background:var(--midori);color:#fff;padding:14px 16px 12px;
-  display:flex;align-items:center;justify-content:space-between;gap:10px;
-}
-.head .t{font-size:17px;font-weight:700}
+/* 上部の「なまえを変える」 */
 .head .chg{
   min-height:40px;padding:0 14px;border-radius:20px;
   border:1px solid rgba(255,255,255,.5);background:transparent;color:#fff;
   font-size:14px;font-weight:700;
 }
-.obi{padding:10px 14px;font-size:15px;font-weight:700;text-align:center;display:none}
-.obi.on{display:block}
-.obi.offline{background:#4a4844;color:#fff}
-
-/* ---- 週ナビ ---- */
-.weeknav{
-  display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;padding:10px 12px;
-  background:#fff;border-bottom:1px solid var(--keisen);
-}
-.weeknav button{
-  min-width:52px;min-height:48px;border:1px solid var(--keisen);background:#fff;
-  border-radius:10px;font-size:20px;color:var(--midori);font-weight:700;flex-shrink:0;
-}
-.weeknav button.now{min-width:0;padding:0 14px;border-color:var(--midori);font-size:16px}
-.weeknav .lbl{flex:1;text-align:center;line-height:1.2}
-.weeknav .lbl b{font-size:18px;font-weight:900}
-.weeknav .lbl span{font-size:13px;color:var(--usu);margin-left:6px}
-/* 前月・翌月 */
-.weeknav button.mv{min-width:0;padding:0 12px;font-size:15px}
-/* ボタンが5つになったので、狭い画面では日付をボタンの1行うえに出します */
-.weeknav .lbl{flex:1 0 100%;order:-1;margin-bottom:2px}
 
 /* ---- 名前の帯 ---- */
 .mebar{
@@ -129,78 +73,9 @@ input{font-family:inherit}
 .mates .names{font-size:17px;font-weight:600;line-height:1.9;word-break:break-all}
 .mates .cnt{font-size:12px;color:var(--usu);font-weight:400;margin-top:2px}
 
-/* ---- 予定表(全体) ---- */
-.cats{display:flex;gap:8px;padding:10px 12px 6px;overflow-x:auto}
-.cats::-webkit-scrollbar{display:none}
-.cats button{
-  min-height:48px;padding:0 16px;border-radius:24px;border:1px solid var(--keisen);
-  background:#fff;color:var(--moji);font-size:15px;font-weight:600;flex-shrink:0;
-}
-.cats button.on{background:var(--midori);color:#fff;border-color:var(--midori);font-weight:700}
-.daypills{display:flex;gap:6px;padding:6px 10px 10px}
-.daypills button{
-  flex:1;min-height:58px;border-radius:10px;border:1px solid var(--keisen);
-  background:#fff;line-height:1.2;padding:0;position:relative;
-}
-.daypills button .w{font-size:15px;font-weight:700}
-.daypills button .d{font-size:12px;color:var(--usu)}
-.daypills button.sat .w{color:var(--kyoryoku)}
-.daypills button.sun .w{color:var(--aka)}
-.daypills button.on{background:var(--midori);border-color:var(--midori)}
-.daypills button.on .w{color:#fff;font-weight:900}
-.daypills button.on .d{color:#fff;opacity:.85}
-.daypills button.on.sat .w,.daypills button.on.sun .w{color:#fff}
-.daypills button.today::after{
-  content:'';position:absolute;bottom:5px;left:50%;transform:translateX(-50%);
-  width:16px;height:3px;border-radius:2px;background:var(--midori);
-}
-.daypills button.on.today::after{background:#fff}
 
-.plan{display:flex;flex-direction:column;gap:10px;padding:2px 12px 14px}
-.cathd2{font-size:13px;font-weight:900;color:var(--midori);padding:6px 2px 0}
-.jobcard{background:#fff;border:1px solid var(--keisen);border-radius:12px;padding:12px 14px}
-.jobcard .jn{font-size:18px;font-weight:900;line-height:1.35;word-break:break-all}
-.jobcard .jno{font-size:12px;color:var(--usu);margin-top:1px}
-.jobcard .names{font-size:17px;font-weight:600;line-height:1.9;margin-top:8px;word-break:break-all}
-.jobcard .cnt{font-size:12px;color:var(--usu);font-weight:400;margin-top:2px}
-.jobcard.mine{border:2px solid var(--midori);background:var(--kyo)}
-.jobcard .youtag{
-  display:inline-block;background:var(--midori);color:#fff;border-radius:10px;
-  padding:1px 10px;font-size:12px;font-weight:900;margin-left:6px;vertical-align:2px;
-}
-.jobcard.rest2{background:var(--yasumi)}
-.jobcard.rest2 .jn{color:var(--usu2);font-size:16px}
-/* まだ人が決まっていない工事。大きさは同じで、文字だけ薄くします */
-.jobcard .names.mitei2{color:#b9b3a2;font-weight:400}
-/* 開始日が来ているのに、まだ人が入っていない工事 */
-.jobcard .wtag{
-  display:inline-block;background:var(--kiji);border:1px solid var(--kiwaku);border-radius:8px;
-  padding:1px 8px;font-size:13px;font-weight:700;color:var(--ki);margin-right:6px;
-}
-.nm{white-space:nowrap}
-.nm.coop{color:var(--kyoryoku)}
+/* 自分の名前は目立たせます */
 .nm.me{background:#fff6b8;border-radius:4px;padding:0 3px;font-weight:900}
-.sc{color:var(--shokucho);font-weight:900;margin-right:1px;font-size:.85em}
-.sep{color:#c2bcab;font-weight:400}
-.nodata{padding:40px 16px;text-align:center;color:var(--usu);font-size:15px;line-height:1.9}
-.nodata .showall{
-  display:block;margin:14px auto 0;min-height:48px;padding:0 20px;border-radius:24px;
-  border:1.5px dashed var(--midori);background:#fff;color:var(--midori);
-  font-size:15px;font-weight:700;
-}
-/* 使う工事だけ / すべて */
-.filterbar{display:flex;align-items:center;gap:10px;padding:0 12px 10px;flex-wrap:wrap}
-.filterbar .seg{display:flex;flex-shrink:0}
-.filterbar .seg button{
-  min-height:44px;padding:0 16px;border:1px solid var(--keisen);background:#fff;
-  font-size:15px;font-weight:700;color:var(--usu2);
-}
-.filterbar .seg button:first-child{border-radius:22px 0 0 22px}
-.filterbar .seg button:last-child{border-radius:0 22px 22px 0;border-left:0}
-.filterbar .seg button.on{background:var(--midori);color:#fff;border-color:var(--midori)}
-.filterbar .seg button.on + button{border-left-color:var(--midori)}
-.filterbar .fmsg{font-size:13px;color:var(--usu);line-height:1.5}
-.filterbar .fmsg b{color:var(--ki);font-weight:900}
 
 /* ---- 名前を選ぶ ---- */
 .pick{padding:16px 12px 24px}
@@ -219,90 +94,29 @@ input{font-family:inherit}
 .pick .list button .s{display:block;font-size:12px;color:var(--usu);font-weight:600}
 .pick .none{padding:30px 10px;text-align:center;color:var(--usu);font-size:15px}
 
-/* ---- 下タブ ---- */
-.tabs{
-  margin-top:auto;display:grid;grid-template-columns:repeat(2,1fr);
-  background:#fff;border-top:1px solid var(--keisen);
-  padding:6px 4px calc(10px + env(safe-area-inset-bottom));position:sticky;bottom:0;z-index:20;
-}
-.tabs button{border:none;background:none;text-align:center;padding:8px 0;color:var(--usu);min-height:56px}
-.tabs button .i{font-size:22px}
-.tabs button .l{font-size:13px;font-weight:600}
-.tabs button.on{color:var(--midori)}
-.tabs button.on .l{font-weight:900}
 
 /* ---- 大きい画面では中央に寄せます ---- */
 @media (min-width:700px){
-  #app{max-width:600px;margin:0 auto;border-left:1px solid var(--keisen);border-right:1px solid var(--keisen)}
   .pick .list{grid-template-columns:repeat(3,1fr)}
 }
 
-/* =====================================================================
-   スマホを横向きにしたとき(幅1023px以下 かつ 横長)
-     ・上の「600pxに寄せる」は効かせず、画面幅をそのまま使います
-     ・縦が狭くなるので、上まわりと下タブを薄くします
-     ・横が広くなるので、カードを2列に並べて多く見えるようにします
-   ===================================================================== */
+/* ---- スマホを横向きにしたとき ---- */
 @media (max-width:1023px) and (orientation:landscape){
-  #app{max-width:none;margin:0;border-left:0;border-right:0}
-
-  /* ---- 上まわりを薄く ---- */
-  .head{padding:5px 14px}
-  .head .t{font-size:15px;font-weight:900}
-  .head .chg{min-height:32px;padding:0 12px;font-size:13px;border-radius:16px}
-  .obi{padding:5px 14px;font-size:13px}
-
-  /* 横向きは横に余裕があるので、日付をボタンと同じ行に戻します */
-  .weeknav{padding:4px 10px;gap:6px;flex-wrap:nowrap;justify-content:flex-start}
-  .weeknav .lbl{flex:1;order:0;margin-bottom:0}
-  .weeknav button{min-width:44px;min-height:34px;font-size:17px;border-radius:8px}
-  .weeknav button.now,.weeknav button.mv{padding:0 12px;font-size:14px}
-  .weeknav .lbl b{font-size:16px}
-  .weeknav .lbl span{font-size:12px}
-
   .mebar{padding:6px 14px}
   .mebar .nm{font-size:18px}
-
-  .cats{padding:6px 12px 4px;gap:6px}
-  .cats button{min-height:34px;padding:0 12px;font-size:14px}
-  .daypills{padding:4px 10px 6px}
-  .daypills button{min-height:40px}
-  .filterbar{padding:0 12px 6px}
-  .filterbar .seg button{min-height:34px;font-size:13px}
+  .head .chg{min-height:32px;padding:0 12px;font-size:13px;border-radius:16px}
 
   /* ---- カードを2列に。見出しだけは横いっぱいに置きます ---- */
   .days{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;align-items:start;padding:10px 12px}
-  .plan{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;align-items:start;padding:2px 12px 12px}
-  .cathd2{grid-column:1 / -1}
 
   /* ---- 名前えらびは4列に ---- */
   .pick{padding:10px 12px 18px}
   .pick .list{grid-template-columns:repeat(4,1fr)}
 
-  /* ---- 下タブ:絵文字と文字を横に並べて薄くします ---- */
-  .tabs{padding:2px 4px calc(4px + env(safe-area-inset-bottom))}
-  .tabs button{
-    min-height:40px;padding:2px 0;
-    display:flex;align-items:center;justify-content:center;gap:8px;
-  }
-  .tabs button .i{font-size:18px}
-  .tabs button .l{font-size:13px}
-
-  /* =============== ノッチ(カメラの出っぱり)よけ ===============
-     iPhoneを横向きにすると、画面の左右どちらかがカメラの出っぱりに隠れます。
-     隠れる幅ぶんだけ、中身を内側に寄せます。                          */
-  .head{padding-left:calc(14px + var(--sal));padding-right:calc(14px + var(--sar))}
-  .obi{padding-left:calc(14px + var(--sal));padding-right:calc(14px + var(--sar))}
-  .weeknav{padding-left:calc(10px + var(--sal));padding-right:calc(10px + var(--sar))}
+  /* ノッチよけ */
   .mebar{padding-left:calc(14px + var(--sal));padding-right:calc(14px + var(--sar))}
-  .cats{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
-  .daypills{padding-left:calc(10px + var(--sal));padding-right:calc(10px + var(--sar))}
-  .filterbar{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
   .days{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
-  .plan{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
   .pick{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
-  .nodata{padding-left:calc(16px + var(--sal));padding-right:calc(16px + var(--sar))}
-  .tabs{padding-left:calc(4px + var(--sal));padding-right:calc(4px + var(--sar))}
 }
 </style>
 </head>
@@ -314,7 +128,10 @@ input{font-family:inherit}
     <button class="chg" id="btnChange" style="display:none">なまえを変える</button>
   </div>
 
+  <div class="foldbar" id="foldBar"></div>
+
   <div class="obi offline" id="obiOffline">電波が届いていません</div>
+  <div class="obi last" id="obiLast"></div>
 
   <div id="body"></div>
 
@@ -345,9 +162,12 @@ input{font-family:inherit}
     picking: false,
     pickQ: '',
     openMates: {},      // じぶん画面で「一緒に行く人」を開いている日
-    cat: 'all',         // 予定表のカテゴリ
-    onlyUsed: true,     // その日に人が入っている工事だけ出すか
-    pickDate: null,     // 予定表で見ている日
+    cat: 1,             // 予定表のカテゴリ(編集アプリと同じ既定)
+    onlyUsed: true,     // その週に人が入っている工事だけ出すか
+    fold: false,        // スマホで上部をたたんでいるか
+    restOpen: false,    // 「休み」行をひらいているか(既定はたたんだ状態)
+    yoOpen: false,      // 「余」行をひらいているか(既定はたたんだ状態)
+    openCells: {},      // 「+ほか○名」を開いたマス
     online: true,
     nearBase: null,
     nearWeeks: {},      // 直近4週ぶん(最後に人が入った日を調べます)
@@ -356,6 +176,7 @@ input{font-family:inherit}
   };
 
   var $ = function (id) { return document.getElementById(id); };
+  var isPC = function () { return window.matchMedia('(min-width:1024px)').matches; };
   var esc = function (s) {
     return String(s).replace(/[&<>"']/g, function (c) {
       return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
@@ -391,6 +212,7 @@ input{font-family:inherit}
     document.head.appendChild(l3);
 
     YY.init();
+    S.fold = getFold();          // 前に閉じたときの状態を思い出します
 
     try { S.me = localStorage.getItem(ME_KEY) || null; } catch (e) { S.me = null; }
 
@@ -456,6 +278,7 @@ input{font-family:inherit}
   function goWeek(n) {
     S.monday = (n === 0) ? YY.thisMonday() : YY.addWeeks(S.monday, n);
     S.openMates = {};
+    S.openCells = {};        // 「+ほか○名」で開いていたマスは閉じます
     watchWeek();
     render();
   }
@@ -464,6 +287,7 @@ input{font-family:inherit}
   function goMonth(step) {
     S.monday = YY.moveMonth(S.monday, step);
     S.openMates = {};
+    S.openCells = {};
     watchWeek();
     render();
   }
@@ -473,9 +297,12 @@ input{font-family:inherit}
      ================================================================= */
   function render() {
     $('headTitle').textContent = (S.tab === 'me') ? '👤 じぶん' : '📅 予定表';
+    drawLastEdit();
+    drawFoldBar();
     $('btnChange').style.display = (S.tab === 'me' && S.me && !S.picking) ? '' : 'none';
 
     var b = $('body');
+    b.className = (S.tab === 'plan') ? 'plan' : '';
     b.innerHTML = '';
     if (S.tab === 'me') {
       if (!S.me || S.picking) renderPick(b);
@@ -671,143 +498,344 @@ input{font-family:inherit}
        スマホでは横に7日並べると読めないので、
        【日を選んで、その日の工事を縦に並べる】形にしています。
      ================================================================= */
+  /* =================================================================
+     画面2「予定表」= 編集アプリとまったく同じ表(見るだけ)
+       ・表の形・色・固定・たたむ機能は、編集アプリと同じ hyou.css と
+         同じ組み立て方をそのまま使っています。
+       ・ちがうのは「押しても編集できない」ことだけです。
+         マスを押しても選択シートは開かず、工事名を押しても編集画面は
+         開きません。「前に使った工事」「＋工事を追加」もありません。
+       ・「+ほか○名」だけは押すと全員出ます(見るためなので)。
+     ================================================================= */
+
   function renderPlan(b) {
     b.appendChild(weekNav());
+    b.appendChild(catTabs());
+    b.appendChild(filterBar());
 
-    /* カテゴリ */
-    var cats = el('div', 'cats', '');
-    var list = [{ k: 'all', l: 'すべて' }];
+    var days = YY.weekDates(S.monday);
+    var st = {};
+    days.forEach(function (d) { st[d] = YY.computeDay(S.week, d); });
+
+    var g = el('div', 'grid', '');
+    var today = YY.todayKey();
+
+    /* 見出し行 */
+    g.appendChild(el('div', 'corner', '工事' + (isPC() ? '(注番)' : '')));
+    days.forEach(function (d, i) {
+      var c = 'hd' + (d === today ? ' today' : '') + (i === 5 ? ' sat' : i === 6 ? ' sun' : '');
+      var dt = YY.parseKey(d);
+      g.appendChild(el('div', c, '<b>' + YY.DOW[i] + '</b> <span>' +
+        (dt.getMonth() + 1) + '/' + dt.getDate() + '</span>'));
+    });
+
+    /* 休み行(いちばん上に固定)。たためます */
+    var rh = el('div', 'rest resthd', '<span>休み</span>');
+    rh.appendChild(rowToggle(S.restOpen, '休みの人', function () {
+      S.restOpen = !S.restOpen; render();
+    }));
+    g.appendChild(rh);
+    days.forEach(function (d) { g.appendChild(restCell(d, st[d])); });
+
+    /* 🟡 余 行(計算で出すだけ)。たためます */
+    var yh = el('div', 'yohd', '<span>🟡 余</span>');
+    yh.appendChild(rowToggle(S.yoOpen, '余っている人', function () {
+      S.yoOpen = !S.yoOpen; render();
+    }));
+    g.appendChild(yh);
+    days.forEach(function (d) { g.appendChild(yoCell(st[d])); });
+
+    /* 工事の行 */
+    var used = usedJobIds();
+    var cats = (S.cat === 'all') ? YY.ALL_TAB_ORDER : [S.cat];
+    var any = false;
+    cats.forEach(function (cat) {
+      var jobs = YY.jobsByCat(cat, used);
+      if (S.onlyUsed) jobs = jobs.filter(function (j) { return jobInUse(j, used); });
+      if (!jobs.length) return;
+      if (S.cat === 'all') {
+        g.appendChild(el('div', 'cathd', esc(YY.CATEGORIES.labels[cat])));
+      }
+      jobs.forEach(function (j, idx) {
+        any = true;
+        g.appendChild(jobCell(j, used, idx, jobs.length));
+        days.forEach(function (d) { g.appendChild(planCell(j.id, d, st[d])); });
+      });
+    });
+
+    var wrap = el('div', 'gridwrap', '');
+    wrap.appendChild(g);
+    b.appendChild(wrap);
+
+    if (!any) {
+      b.appendChild(el('div', 'nodata',
+        'この週に出す工事がありません<br>' +
+        '<span style="font-size:13px">「すべての工事」に切り替えると、ほかの工事も出ます</span>'));
+    }
+
+    if (!isPC()) b.appendChild(el('div', 'guide', '◀ 横にスワイプで 木・金・土・日 ▶'));
+    b.appendChild(el('div', 'legend',
+      '<span style="color:var(--shokucho)">◎=職長</span>' +
+      '<span style="color:var(--moji)">■ 自社</span>' +
+      '<span style="color:var(--kyoryoku)">■ 協力会社</span>'));
+  }
+
+  /** 行をたたむ・ひらくボタン(休み行と余行で共通) */
+  function rowToggle(open, what, onClick) {
+    var b = document.createElement('button');
+    b.className = 'tg';
+    b.textContent = open ? '▴' : '▾';
+    b.title = what + (open ? 'をたたむ' : 'をひらく');
+    b.addEventListener('click', function (e) { e.stopPropagation(); onClick(); });
+    return b;
+  }
+
+  /** 工事名のマス。押しても編集画面は開きません(見るだけ) */
+  function jobCell(j, used, idx, total) {
+    var c = el('div', 'job', '');
+    var waiting = !(used || {})[j.id] && YY.jobStartsInWeek(j, S.monday);
+    c.setAttribute('data-job', j.id);
+
+    c.innerHTML = '<div class="n">' + esc(j.name) + '</div>' +
+      (j.no ? '<div class="no">' + esc(j.no) + '</div>' : '') +
+      (!j.active ? '<div class="kept"><div class="badge">⊘ 隠す設定・予定あり</div></div>' : '') +
+      (waiting ? '<div class="waiting">' + esc(mdLabel(j.start)) + ' 開始・まだ人なし</div>' : '');
+    c.title = j.name + (j.no ? '(' + j.no + ')' : '');
+    return c;
+  }
+
+  /** その日の「休み」。たたんでいるときは人数だけ */
+  function restCell(dateKey, day) {
+    var b = document.createElement('div');
+    b.className = 'cell rest' + (YY.isToday(dateKey) ? ' today' : '') +
+      (S.restOpen ? '' : ' closed');
+    var d = YY.displayCell(S.week, YY.REST_KEY, dateKey);
+
+    if (!S.restOpen) {
+      b.innerHTML = d.count
+        ? '<div class="big">' + d.count + '名</div>'
+        : '<div class="none">—</div>';
+      b.title = d.count ? d.rows.map(YY.nameWithMarks).concat(d.extras).join('・') : '';
+      return b;
+    }
+    if (d.count === 0) {
+      b.classList.add('empty');
+      b.textContent = '—';
+      return b;
+    }
+    b.innerHTML = joinNames(d.rows.map(function (r) { return nameHTML(r, day, YY.REST_KEY); })
+      .concat(d.extras.map(function (x) { return '<span class="nm">' + esc(x) + '</span>'; }))) +
+      '<div class="cnt">' + d.count + '名</div>';
+    return b;
+  }
+
+  /** 余の行に出す人数の上限(編集アプリと同じ) */
+  var YO_LIMIT = 8;
+
+  function yoCell(day) {
+    var d = document.createElement('div');
+    var names = day.free;
+
+    if (!S.yoOpen) {
+      d.className = 'yo closed';
+      d.innerHTML = names.length
+        ? '<div class="big">' + names.length + '名</div>'
+        : '<div class="none">—</div>';
+      d.title = names.length ? names.join('・') : '';
+      return d;
+    }
+    d.className = 'yo';
+    if (!names.length) { d.innerHTML = '<div class="none">—</div>'; return d; }
+
+    var shown = names.slice(0, YO_LIMIT);
+    var more = names.length - shown.length;
+    d.innerHTML = joinNames(shown.map(function (n) {
+      return '<span class="nm' + (YY.isCoop(n) ? ' coop' : '') + '">' + esc(n) + '</span>';
+    })) +
+      (more > 0 ? '<span class="more2">ほか' + more + '名</span>' : '') +
+      '<div class="cnt">' + names.length + '名</div>';
+    d.title = names.join('・');
+    return d;
+  }
+
+  /* セルに出す人数の上限(編集アプリと同じ) */
+  var CELL_LIMIT = 5;
+  var CELL_LIMIT_WEEKEND = 3;
+
+  /**
+   * 予定のマス。押しても選択シートは開きません。
+   * 「+ほか○名」が出ているときだけ、押すと全員出ます(見るためです)。
+   */
+  function planCell(jobKey, dateKey, day) {
+    var b = document.createElement('div');
+    var key = jobKey + '|' + dateKey;
+    b.className = 'cell' + (YY.isToday(dateKey) ? ' today' : '') +
+      (YY.hasPlan(S.week, jobKey, dateKey) ? ' planned' : '');
+    var d = YY.displayCell(S.week, jobKey, dateKey);
+
+    if (d.count === 0) {
+      b.classList.add('empty');
+      b.innerHTML = '·';
+      return b;
+    }
+
+    var all = d.rows.map(function (r) { return nameHTML(r, day, jobKey); })
+      .concat(d.extras.map(function (x) { return '<span class="nm">' + esc(x) + '</span>'; }));
+    var lim = (isPC() && YY.isWeekend(dateKey)) ? CELL_LIMIT_WEEKEND : CELL_LIMIT;
+    var open = !!S.openCells[key];
+    var shown = open ? all : all.slice(0, lim);
+    var more = all.length - shown.length;
+
+    b.innerHTML = joinNames(shown) +
+      (more > 0 ? '<div class="more">+ほか' + more + '名</div>' : '') +
+      (open && all.length > lim ? '<div class="more">▲ とじる</div>' : '') +
+      '<div class="cnt">' + d.count + '名</div>';
+
+    // 隠れている人がいるマスだけ、押すと全員出ます
+    if (all.length > lim) {
+      b.classList.add('canopen');
+      b.title = '押すと全員出ます';
+      b.addEventListener('click', function () {
+        if (S.openCells[key]) delete S.openCells[key]; else S.openCells[key] = true;
+        render();
+      });
+    }
+    return b;
+  }
+
+  /** 1人ぶんの表示。しるしは名前の直前に、色付きで出します */
+  function nameHTML(row, day, jobKey) {
+    var dup = day && day.placements[row.name] && day.placements[row.name].length >= 2;
+    var mk = row.mark ? '<span class="sc">' + esc(row.mark) + '</span>' : '';
+    var me = (row.name === S.me) ? ' me' : '';
+    return '<span class="nm' + (row.coop ? ' coop' : '') + '">' + mk +
+      '<span class="' + (dup ? 'nm dup' : '') + me + '">' + esc(row.name) + '</span></span>';
+  }
+
+  /** 名前をつなぎます(編集アプリと同じ) */
+  function joinNames(list) {
+    return list.join(isPC() ? '<span class="sep">・</span><wbr>' : '<br>');
+  }
+
+  /** カテゴリタブ(編集アプリと同じ4つ) */
+  function catTabs() {
+    var c = el('div', 'cats', '');
+    var list = [];
     YY.CATEGORIES.order.forEach(function (n) {
       list.push({ k: n, l: YY.CATEGORIES.labels[n] });
     });
+    list.push({ k: 'all', l: '週のすべて' });
     list.forEach(function (it) {
-      var bt = document.createElement('button');
-      bt.textContent = it.l;
-      if (S.cat === it.k) bt.className = 'on';
-      bt.addEventListener('click', function () { S.cat = it.k; render(); });
-      cats.appendChild(bt);
+      var b = document.createElement('button');
+      b.textContent = it.l;
+      if (S.cat === it.k) b.className = 'on';
+      b.addEventListener('click', function () { S.cat = it.k; render(); });
+      c.appendChild(b);
     });
-    b.appendChild(cats);
+    return c;
+  }
 
-    /* 曜日 */
-    var days = YY.weekDates(S.monday);
-    if (days.indexOf(S.pickDate) < 0) {
-      var t = YY.todayKey();
-      S.pickDate = (days.indexOf(t) >= 0) ? t : days[0];
-    }
-    var pills = el('div', 'daypills', '');
-    days.forEach(function (d, i) {
-      var dt = YY.parseKey(d);
-      var bt = document.createElement('button');
-      bt.className = (d === S.pickDate ? 'on ' : '') +
-        (i === 5 ? 'sat ' : i === 6 ? 'sun ' : '') + (YY.isToday(d) ? 'today' : '');
-      bt.innerHTML = '<div class="w">' + YY.DOW[i] + '</div><div class="d">' + dt.getDate() + '</div>';
-      bt.addEventListener('click', function () { S.pickDate = d; render(); });
-      pills.appendChild(bt);
-    });
-    b.appendChild(pills);
-
-    /* 「使う工事だけ / すべて」の切り替え。
-       工事が多いので、既定はその日に1人でも入っている工事だけです */
-    var catList = (S.cat === 'all') ? YY.CATEGORIES.order : [S.cat];
-    var nUse = 0, nHide = 0;
-    catList.forEach(function (cat) {
-      YY.jobsByCat(cat, usedJobIds()).forEach(function (j) {
-        if (jobInUse(j)) nUse++; else nHide++;
+  /** 「使う工事だけ / すべての工事」。編集アプリと同じ(前に使った工事は出しません) */
+  function filterBar() {
+    var used = usedJobIds();
+    var cats = (S.cat === 'all') ? YY.ALL_TAB_ORDER : [S.cat];
+    var shown = 0, hidden = 0;
+    cats.forEach(function (cat) {
+      YY.jobsByCat(cat, used).forEach(function (j) {
+        if (jobInUse(j, used)) shown++; else hidden++;
       });
     });
 
     var bar = el('div', 'filterbar', '');
     var seg = el('div', 'seg', '');
-    [{ k: true, l: '使う工事だけ' }, { k: false, l: 'すべて' }].forEach(function (it) {
-      var b2 = document.createElement('button');
-      b2.textContent = it.l;
-      if (S.onlyUsed === it.k) b2.className = 'on';
-      b2.addEventListener('click', function () { S.onlyUsed = it.k; render(); });
-      seg.appendChild(b2);
+    [{ k: true, l: '使う工事だけ' }, { k: false, l: 'すべての工事' }].forEach(function (it) {
+      var b = document.createElement('button');
+      b.textContent = it.l;
+      if (S.onlyUsed === it.k) b.className = 'on';
+      b.addEventListener('click', function () { S.onlyUsed = it.k; render(); });
+      seg.appendChild(b);
     });
     bar.appendChild(seg);
-    bar.appendChild(el('div', 'fmsg', S.onlyUsed
-      ? (nHide ? '<b>' + nHide + '件</b>を隠しています(この日は誰も入っていません)'
-        : 'この日に使う工事だけ出ています')
-      : '全' + (nUse + nHide) + '件を出しています(この日に人が入っているのは ' + nUse + '件)'));
-    b.appendChild(bar);
 
-    /* その日の工事。並びは編集アプリの工事の順そのままです */
-    var box = el('div', 'plan', '');
-    var shown = 0;
-
-    catList.forEach(function (cat) {
-      var jobs = YY.jobsByCat(cat, usedJobIds());
-      // 「使う工事だけ」= その日に1人でも入っている工事だけ
-      if (S.onlyUsed) {
-        jobs = jobs.filter(function (j) { return jobInUse(j); });
-      }
-      if (!jobs.length) return;
-      if (S.cat === 'all') box.appendChild(el('div', 'cathd2', esc(YY.CATEGORIES.labels[cat])));
-
-      jobs.forEach(function (j) {
-        var c = YY.displayCell(S.week, j.id, S.pickDate);
-        shown++;
-        var mine = !!c.rows.filter(function (r) { return r.name === S.me; }).length;
-        var card = el('div', 'jobcard' + (mine ? ' mine' : ''), '');
-        card.appendChild(el('div', 'jn',
-          esc(j.name) + (mine ? '<span class="youtag">あなた</span>' : '')));
-        if (j.no) card.appendChild(el('div', 'jno', esc(j.no)));
-
-        if (c.count) {
-          card.appendChild(el('div', 'names', namesHTML(c.rows, c.extras)));
-          card.appendChild(el('div', 'cnt', c.count + '名'));
-        } else {
-          card.appendChild(el('div', 'names mitei2',
-            YY.jobStartsInWeek(j, S.monday)
-              ? '<span class="wtag">' + esc(mdLabel(j.start)) + ' 開始</span> まだ決まっていません'
-              : 'まだ決まっていません'));
-          card.appendChild(el('div', 'cnt', '0名'));
-        }
-        box.appendChild(card);
-      });
-    });
-
-    /* 休み */
-    var rc = YY.displayCell(S.week, YY.REST_KEY, S.pickDate);
-    if (rc.count) {
-      var rcard = el('div', 'jobcard rest2', '');
-      rcard.appendChild(el('div', 'jn', '休み'));
-      rcard.appendChild(el('div', 'names', namesHTML(rc.rows, rc.extras)));
-      rcard.appendChild(el('div', 'cnt', rc.count + '名'));
-      box.appendChild(rcard);
-      shown++;
-    }
-
-    if (!shown) {
-      if (!YY.master.jobs.length) {
-        box.appendChild(el('div', 'nodata',
-          '工事がまだ登録されていません<br>事務所にお問い合わせください'));
-      } else if (S.onlyUsed && nHide) {
-        // 工事はあるが、この日は誰も入っていないので隠れている状態
-        var nd = el('div', 'nodata',
-          'この日は、まだ誰も入っていません<br>' +
-          '<span style="font-size:14px">「すべて」に切り替えると工事を見られます</span>');
-        var sw = document.createElement('button');
-        sw.className = 'showall';
-        sw.textContent = 'すべての工事を出す';
-        sw.addEventListener('click', function () { S.onlyUsed = false; render(); });
-        nd.appendChild(sw);
-        box.appendChild(nd);
-      } else {
-        box.appendChild(el('div', 'nodata', 'このカテゴリに工事がありません'));
-      }
-    }
-
-    b.appendChild(box);
+    var msg = el('div', 'fmsg', '');
+    msg.innerHTML = S.onlyUsed
+      ? (hidden ? '<b>' + hidden + '件</b>を隠しています(この週は誰も入っていません)'
+                : 'この週に使う工事だけ出ています')
+      : '全' + (shown + hidden) + '件を出しています' +
+        (shown ? '(この週に人が入っているのは ' + shown + '件)' : '');
+    bar.appendChild(msg);
+    return bar;
   }
 
-  /** 「使う工事だけ」で出す条件:その日に人が入っている、または開始日が来ている */
-  function jobInUse(j) {
-    // 編集アプリと同じ3つの条件。ただし人の有無は「その日」で見ます
-    if (YY.cellCount(S.week, j.id, S.pickDate)) return true;
+  /* --- 上部をたたむ(スマホだけ)。編集アプリと同じ --- */
+  var FOLD_KEY = 'yotsuba.yotei.fold.view';
+
+  function getFold() {
+    try { return window.localStorage.getItem(FOLD_KEY) === '1'; } catch (e) { return false; }
+  }
+  function setFold(on) {
+    try { window.localStorage.setItem(FOLD_KEY, on ? '1' : '0'); } catch (e) { /* 覚えられなくても動きます */ }
+  }
+
+  function drawFoldBar() {
+    var bar = $('foldBar');
+    var app = $('app');
+    if (S.tab !== 'plan') {
+      bar.classList.remove('on');
+      app.classList.remove('fold');
+      return;
+    }
+    bar.classList.add('on');
+    app.classList.toggle('fold', S.fold);
+
+    var lb = YY.weekLabel(S.monday);
+    if (S.fold) {
+      bar.innerHTML =
+        '<button class="mv2" id="fbPrev" title="1週まえ">◀</button>' +
+        '<div class="wk3">' + lb.range + '<span>' + lb.year + '</span></div>' +
+        '<button class="mv2" id="fbNext" title="1週さき">▶</button>' +
+        '<button class="fb" id="fbToggle">▼ ひらく</button>';
+      $('fbPrev').addEventListener('click', function () { goWeek(-1); });
+      $('fbNext').addEventListener('click', function () { goWeek(1); });
+    } else {
+      bar.innerHTML =
+        '<button class="fb" id="fbToggle">▲ たたむ</button>' +
+        '<div class="wk3" style="text-align:left;font-size:12px;color:var(--usu);font-weight:700">' +
+        '上の週ナビ・分類・絞り込みを隠して、表を広く使えます</div>';
+    }
+    $('fbToggle').addEventListener('click', function () {
+      S.fold = !S.fold;
+      setFold(S.fold);
+      drawFoldBar();
+    });
+  }
+
+  /** ミリ秒 → '8/22 14:30' */
+  function stamp(ms) {
+    if (!ms) return '';
+    var d = new Date(ms);
+    var p = function (n) { return (n < 10 ? '0' : '') + n; };
+    return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  /** 最終編集の帯。見るだけなので「名前を変える」は出しません */
+  function drawLastEdit() {
+    var e = $('obiLast');
+    if (S.tab !== 'plan') { e.classList.remove('on'); return; }
+    var w = S.week || {};
+    e.innerHTML = w.updatedAt
+      ? '✏ 最終編集 <span class="when">' + esc(stamp(w.updatedAt)) + '</span> ' +
+        '<span class="who">' + esc(w.updatedBy || '—') + '</span>'
+      : '<span class="none4">✏ この週は、まだ編集されていません</span>';
+    e.classList.add('on');
+  }
+
+
+
+  /** 「使う工事だけ」で出す条件。編集アプリとまったく同じ見かたです */
+  function jobInUse(j, used) {
     return YY.jobVisible(j, {
+      usedNow: !!(used || usedJobIds())[j.id],
       usedPrev: !!prevUsed()[j.id],
       shown: !!(S.week.show || {})[j.id],
       monday: S.monday

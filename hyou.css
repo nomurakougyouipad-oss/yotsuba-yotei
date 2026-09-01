@@ -1,0 +1,1108 @@
+/* =====================================================================
+   よつば週間予定|共通スタイル
+     編集アプリ(hensyu.html)と確認用アプリ(yotei.html)で共通に使います。
+     ここ1か所を直せば両方に効くので、見た目がずれません。
+     ※ 片方にしか無い部品(選択シートなど)の指定も入っていますが、
+        その部品が無いページでは、ただ使われないだけです。
+   ===================================================================== */
+
+/* ============ 配色(日報アプリと共通トーン) ============ */
+:root{
+  --midori:#1c4b34;      /* 深緑 */
+  --kinari:#f5f1e8;      /* 生成り */
+  --ji:#e8e4d8;          /* 地色 */
+  --moji:#2b2a26;
+  --usu:#8a877c;
+  --usu2:#6b675c;
+  --keisen:#d9d3c4;
+  --keisen2:#e6e1d3;
+  --kyoryoku:#4a7c9b;    /* 協力会社の文字色 */
+  --shokucho:#3fae6a;    /* ◎ */
+  --aka:#b3402e;         /* 重複・警告 */
+  --ki:#b07d1e;          /* 余 */
+  --kiji:#fdf3dd;
+  --kiwaku:#ecd9ac;
+  --yasumi:#eceae2;
+  --kyo:#eef3ee;         /* きょうの列 */
+}
+*{box-sizing:border-box}
+/* iPhoneのノッチ(カメラの出っぱり)やホームバーで隠れる幅です。
+   縦向きや、ノッチのない端末では 0 になるので、見た目は変わりません */
+:root{
+  --sal:env(safe-area-inset-left,0px);
+  --sar:env(safe-area-inset-right,0px);
+}
+html,body{margin:0;padding:0}
+/* iOSの「端まで行ってから、もう少し動いて戻る」を止めます。
+   contain は「外側へ伝えない」だけで、跳ね返り自体は残ります。
+   止めるには none が要ります(横も縦も) */
+html,body{overscroll-behavior:none}
+body{
+  background:var(--ji);font-family:'Noto Sans JP',sans-serif;color:var(--moji);
+  font-size:16px;word-break:keep-all;-webkit-text-size-adjust:100%;
+}
+button{font-family:inherit;white-space:nowrap;cursor:pointer}
+input{font-family:inherit}
+
+/* ============ 全体の枠 ============ */
+#app{display:flex;flex-direction:column;height:100vh;height:100dvh;overflow:hidden;background:var(--kinari)}
+/* 予定を組むタブだけ、表そのものをスクロールさせます(見出しを固定するため) */
+#body{
+  flex:1;min-height:0;overflow-y:auto;
+  overscroll-behavior:contain;      /* 端で引っぱっても外側が動かないように */
+}
+#body.plan{overflow:hidden;display:flex;flex-direction:column}
+.head{
+  background:var(--midori);color:#fff;padding:14px 16px 12px;
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+}
+.head .t{font-size:17px;font-weight:700}
+.head .s{font-size:12px;opacity:.75;margin-left:auto}
+/* PC版ツールバー */
+.head .shukei{
+  min-height:34px;padding:5px 12px;border-radius:8px;
+  border:1px solid rgba(255,255,255,.5);color:#fff;text-decoration:none;
+  font-size:13px;font-weight:700;margin-left:14px;
+}
+.head .tool{
+  min-height:34px;padding:0 12px;border-radius:8px;font-size:13px;font-weight:700;
+  border:1px solid rgba(255,255,255,.5);background:transparent;color:#fff;margin-left:8px;
+}
+.head .tool.xls{background:#fff;color:var(--midori);border:none;font-weight:900}
+.head .tool.line{background:#06c755;color:#fff;border:none;font-weight:900}
+/* 曜日を選ぶ小さなパネル */
+.daymask{position:fixed;inset:0;z-index:44;display:none;background:transparent}
+.daymask.on{display:block}
+.daypop{
+  position:fixed;z-index:45;display:none;background:#fff;width:max-content;
+  border:1px solid var(--keisen);border-radius:12px;
+  box-shadow:0 12px 32px rgba(43,42,38,.3);
+}
+.daypop.on{display:block}
+.daypop .arrow{
+  position:absolute;top:-7px;width:12px;height:12px;background:#fff;transform:rotate(45deg);
+  border-left:1px solid var(--keisen);border-top:1px solid var(--keisen);
+}
+.daypop .in{position:relative;padding:12px 14px}
+.daypop .ttl2{font-size:13px;font-weight:900;color:var(--midori);margin-bottom:8px}
+.daypop .row2{display:flex;gap:6px}
+.daypop .row2 button{
+  min-width:56px;min-height:52px;border-radius:8px;border:1px solid var(--keisen);
+  background:#fff;line-height:1.25;padding:4px 2px;
+}
+.daypop .row2 button .w{font-size:14px;font-weight:700;display:block}
+.daypop .row2 button .d{font-size:11px;color:var(--usu);display:block}
+.daypop .row2 button .n2{font-size:10px;color:var(--midori);font-weight:700;display:block}
+.daypop .row2 button.today{border-color:var(--midori);background:var(--kyo)}
+.daypop .row2 button:disabled{background:#f4f1e9;color:#b9b3a2;cursor:default}
+.daypop .row2 button:disabled .n2{color:#b9b3a2}
+.daypop .hint3{font-size:11px;color:var(--usu);margin-top:8px}
+
+/* 帯(オフライン・名簿エラー) */
+.obi{padding:8px 14px;font-size:14px;font-weight:700;text-align:center;display:none}
+.obi.on{display:block}
+.obi.offline{background:#4a4844;color:#fff}
+.obi.master{background:#fbe9e5;color:var(--aka);border-bottom:1px solid #e5b8ae}
+/* --- 上部をたたむバー(スマホだけ)-----------------------------------
+   上と下の固定部分でスマホの画面が半分近く埋まるので、
+   予定を組むタブでは、上のひとかたまりをまとめて隠せるようにします。
+   たたんでも「どの週を見ているか」と週の前後移動は残します。
+   ------------------------------------------------------------------- */
+.foldbar{
+  display:none;align-items:center;gap:8px;padding:5px 12px;
+  background:var(--kyo);border-bottom:1px solid var(--keisen);
+}
+.foldbar.on{display:flex}
+.foldbar .fb{
+  min-height:44px;padding:0 14px;border-radius:10px;flex-shrink:0;
+  border:1.5px solid var(--midori);background:var(--midori);color:#fff;
+  font-size:14px;font-weight:900;
+}
+.foldbar .wk3{
+  flex:1;min-width:0;text-align:center;line-height:1.2;
+  font-size:16px;font-weight:900;color:var(--moji);
+}
+.foldbar .wk3 span{font-size:11px;color:var(--usu);font-weight:700;margin-left:5px}
+.foldbar .mv2{
+  min-width:44px;min-height:44px;border-radius:10px;flex-shrink:0;
+  border:1px solid var(--keisen);background:#fff;color:var(--midori);
+  font-size:17px;font-weight:700;
+}
+
+/* 最終編集の帯。「だれが・いつ触ったか」は確かめたい情報なので、
+   薄い赤の地に赤い文字で、ぱっと目に入るようにしています。
+   まちがいのお知らせ(.obi.master)より地の色を薄くして、
+   エラーと取り違えないようにしています。 */
+.obi.last{
+  background:#fdf0ec;color:var(--aka);border-bottom:1px solid #efcdc4;
+  font-size:14px;font-weight:700;text-align:left;padding:7px 14px;
+  align-items:center;gap:10px;
+}
+.obi.last.on{display:flex}
+.obi.last .who,.obi.last .when{color:var(--aka);font-weight:900;font-size:15px}
+.obi.last .none4{color:var(--aka);opacity:.85}
+.obi.last .me2{
+  flex-shrink:0;min-height:28px;padding:0 12px;border-radius:14px;
+  border:1px solid #e5b8ae;background:#fff;color:var(--aka);
+  font-size:12px;font-weight:700;
+}
+
+/* 編集履歴 */
+.logmask{position:fixed;inset:0;background:rgba(43,42,38,.45);z-index:50;display:none}
+.logmask.on{display:block}
+.logpop{
+  position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:51;
+  margin-left:calc((var(--sal) - var(--sar)) / 2);
+  width:620px;max-width:calc(100vw - 24px - var(--sal) - var(--sar));
+  max-height:90vh;max-height:90dvh;display:none;
+  flex-direction:column;background:#fff;border-radius:14px;overflow:hidden;
+  box-shadow:0 16px 44px rgba(43,42,38,.35);
+}
+.logpop.on{display:flex}
+.logpop .lh{background:var(--aka);color:#fff;padding:12px 16px;display:flex;align-items:center;gap:10px}
+.logpop .lh .t4{font-size:17px;font-weight:900}
+.logpop .lh .s4{font-size:12px;opacity:.9}
+.logpop .lh .x2{
+  margin-left:auto;min-height:34px;padding:0 12px;border-radius:8px;
+  border:1px solid rgba(255,255,255,.6);background:transparent;color:#fff;
+  font-size:13px;font-weight:700;
+}
+.logpop .lb{overflow-y:auto;overscroll-behavior:contain;padding:0 0 8px}
+.logpop .wk{
+  position:sticky;top:0;z-index:1;background:var(--kinari);
+  border-bottom:1px solid var(--keisen);padding:7px 16px;
+  font-size:13px;font-weight:900;color:var(--midori);
+}
+.logpop .wk span{color:var(--usu);font-weight:700;margin-left:6px;font-size:11px}
+.logpop .lg{padding:9px 16px;border-bottom:1px solid var(--keisen2)}
+.logpop .lg .l1{font-size:12px;color:var(--usu2);font-weight:700}
+.logpop .lg .l1 b{color:var(--moji);font-weight:900}
+.logpop .lg .l1 .kd{
+  margin-left:6px;font-size:10px;font-weight:900;color:#fff;background:var(--usu);
+  border-radius:8px;padding:1px 6px;
+}
+.logpop .lg .l1 .kd.cell{background:var(--midori)}
+.logpop .lg .l2{font-size:14px;font-weight:900;margin-top:3px;word-break:break-all}
+.logpop .lg .l2 .dt{color:var(--usu2);font-weight:700;margin-right:6px}
+.logpop .lg .l3{font-size:13px;line-height:1.7;margin-top:2px;word-break:break-all}
+.logpop .lg .l3 .fr{color:var(--usu)}
+.logpop .lg .l3 .ar{color:var(--usu);margin:0 5px}
+.logpop .lg .l3 .to{color:var(--midori);font-weight:700}
+.logpop .lg .note2{font-size:13px;margin-top:2px;color:var(--usu2)}
+.logpop .lf{padding:12px 16px;border-top:1px solid var(--keisen);display:flex;gap:10px;align-items:center}
+.logpop .lf button{min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--keisen);background:#fff;font-size:14px;font-weight:700;color:var(--usu2)}
+.logpop .lf .cnt5{margin-left:auto;font-size:12px;color:var(--usu)}
+.logpop .none5{padding:40px 20px;text-align:center;color:var(--usu);font-size:15px;line-height:1.9}
+.obi.last .hist{
+  margin-left:auto;flex-shrink:0;min-height:28px;padding:0 12px;border-radius:14px;
+  border:1px solid #e5b8ae;background:#fff;color:var(--aka);
+  font-size:12px;font-weight:700;
+}
+
+/* 名前を決める吹き出し */
+.namemask{position:fixed;inset:0;background:rgba(43,42,38,.45);z-index:48;display:none}
+.namemask.on{display:block}
+.namepop{
+  position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:49;
+  width:420px;max-width:calc(100vw - 24px);max-height:90vh;max-height:90dvh;display:none;
+  flex-direction:column;background:#fff;border-radius:14px;overflow:hidden;
+  box-shadow:0 16px 44px rgba(43,42,38,.35);
+}
+.namepop.on{display:flex}
+.namepop .nh{background:var(--midori);color:#fff;padding:14px 16px}
+.namepop .nh .t3{font-size:17px;font-weight:900}
+.namepop .nh .s3{font-size:12px;opacity:.85;margin-top:2px;line-height:1.6}
+.namepop .nb{padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.namepop input{
+  width:100%;min-height:52px;border:1.5px solid var(--midori);border-radius:10px;
+  padding:0 12px;font-size:18px;font-family:inherit;font-weight:700;background:#fff;
+}
+.namepop .hint5{font-size:12px;color:var(--usu);line-height:1.7}
+.namepop .nf{display:flex;gap:10px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--keisen)}
+.namepop .nf button{min-height:48px;padding:0 20px;border-radius:10px;border:1px solid var(--keisen);background:#fff;font-size:15px;font-weight:700;color:var(--usu2)}
+.namepop .nf .ok4{background:var(--midori);color:#fff;border-color:var(--midori);font-weight:900}
+
+/* 週ナビ */
+.weeknav{
+  display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;padding:10px 12px;
+  background:#fff;border-bottom:1px solid var(--keisen);
+}
+.weeknav button{
+  min-width:48px;min-height:44px;border:1px solid var(--keisen);background:#fff;
+  border-radius:8px;font-size:18px;color:var(--midori);font-weight:700;flex-shrink:0;
+}
+.weeknav button.now{min-width:0;padding:0 12px;border-color:var(--midori);font-size:15px}
+.weeknav .lbl{flex:1;text-align:center;line-height:1.2}
+.weeknav .lbl b{font-size:17px;font-weight:900}
+.weeknav .lbl span{font-size:12px;color:var(--usu);margin-left:6px}
+/* 前月・翌月 */
+.weeknav button.mv{min-width:0;padding:0 12px;font-size:14px}
+/* ボタンが5つになったので、狭い画面では日付をボタンの1行うえに出します
+   (order:-1 で先頭へ、flex:1 0 100% でその行を独り占めします) */
+.weeknav .lbl{flex:1 0 100%;order:-1;margin-bottom:2px}
+
+/* カテゴリタブ */
+.cats{display:flex;gap:8px;padding:12px 12px 10px;overflow-x:auto}
+.cats::-webkit-scrollbar{display:none}
+.cats button{
+  min-height:44px;padding:0 14px;border-radius:22px;border:1px solid var(--keisen);
+  background:#fff;color:var(--moji);font-size:15px;font-weight:600;
+}
+.cats button.on{background:var(--midori);color:#fff;border-color:var(--midori);font-weight:700}
+
+/* ============ 使う工事だけ / すべて ============ */
+.filterbar{
+  display:flex;align-items:center;gap:10px;padding:0 12px 10px;flex-wrap:wrap;
+}
+.filterbar .seg{display:flex;flex-shrink:0}
+.filterbar .seg button{
+  min-height:40px;padding:0 14px;border:1px solid var(--keisen);background:#fff;
+  font-size:14px;font-weight:700;color:var(--usu2);
+}
+.filterbar .seg button:first-child{border-radius:20px 0 0 20px}
+.filterbar .seg button:last-child{border-radius:0 20px 20px 0;border-left:0}
+.filterbar .seg button.on{background:var(--midori);color:#fff;border-color:var(--midori)}
+.filterbar .seg button.on + button{border-left-color:var(--midori)}
+.filterbar .fmsg{font-size:12px;color:var(--usu);line-height:1.5}
+.filterbar .fmsg b{color:var(--ki);font-weight:900}
+/* 3つ目:パネルを開くボタン(表示の切り替えではありません) */
+.filterbar .pick2{
+  min-height:40px;padding:0 14px;border-radius:20px;flex-shrink:0;
+  border:1.5px dashed var(--midori);background:#fff;color:var(--midori);
+  font-size:14px;font-weight:700;
+}
+/* 前に使った工事のパネル */
+.pastmask{position:fixed;inset:0;background:rgba(43,42,38,.45);z-index:46;display:none}
+.pastmask.on{display:block}
+.pastpop{
+  position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:47;
+  width:560px;max-width:calc(100vw - 24px);max-height:86vh;max-height:86dvh;display:none;
+  flex-direction:column;background:#fff;border-radius:14px;overflow:hidden;
+  box-shadow:0 16px 44px rgba(43,42,38,.35);
+}
+.pastpop.on{display:flex}
+.pastpop .ph{background:var(--midori);color:#fff;padding:14px 16px}
+.pastpop .ph .t2{font-size:17px;font-weight:900}
+.pastpop .ph .s2{font-size:12px;opacity:.85;margin-top:2px}
+.pastpop .pbar{
+  display:flex;gap:8px;padding:10px 16px;background:var(--kinari);
+  border-bottom:1px solid var(--keisen);align-items:center;flex-wrap:wrap;
+}
+.pastpop .pbar button{
+  min-height:38px;padding:0 12px;border-radius:8px;border:1px solid var(--keisen);
+  background:#fff;font-size:13px;font-weight:700;color:var(--usu2);
+}
+.pastpop .pbar .cnt4{margin-left:auto;font-size:13px;font-weight:700;color:var(--midori)}
+.pastpop .pb{overflow-y:auto;padding:6px 0 10px}
+.pastpop .prow{
+  display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+  padding:10px 16px;border-bottom:1px solid var(--keisen2);background:#fff;
+  border-left:0;border-right:0;border-top:0;min-height:56px;
+}
+.pastpop .prow.locked{background:var(--kyo);cursor:default}
+.pastpop .prow .box{
+  width:24px;height:24px;flex-shrink:0;border:2px solid var(--keisen);border-radius:6px;
+  display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;color:#fff;
+}
+.pastpop .prow.on .box,.pastpop .prow.locked .box{background:var(--midori);border-color:var(--midori)}
+.pastpop .prow .jn2{font-size:16px;font-weight:700;line-height:1.35;word-break:break-all}
+.pastpop .prow .sub3{font-size:11px;color:var(--usu);margin-top:2px}
+.pastpop .prow .tag2{margin-left:auto;flex-shrink:0;font-size:11px;font-weight:700;color:var(--midori)}
+.pastpop .pf{display:flex;gap:10px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--keisen)}
+.pastpop .pf button{min-height:48px;padding:0 20px;border-radius:10px;border:1px solid var(--keisen);background:#fff;font-size:15px;font-weight:700;color:var(--usu2)}
+.pastpop .pf .ok2{background:var(--midori);color:#fff;border-color:var(--midori);font-weight:900}
+.pastpop .none2{padding:40px 20px;text-align:center;color:var(--usu);font-size:15px;line-height:1.9}
+
+@media (min-width:1024px){
+  .filterbar{padding:0 10px 6px;gap:8px}
+  .filterbar .seg button{min-height:28px;padding:0 12px;font-size:13px}
+  .filterbar .seg button:first-child{border-radius:14px 0 0 14px}
+  .filterbar .seg button:last-child{border-radius:0 14px 14px 0}
+  .filterbar .fmsg{font-size:11px}
+}
+
+/* ============ 予定グリッド ============ */
+.gridwrap{
+  overflow:auto;padding-bottom:4px;
+  /* none にしないと、横に端まで行ったときの跳ね返りが残ります。
+     contain は「外側へ伝えない」だけで、跳ね返り自体は止まりません */
+  overscroll-behavior:none;
+  overscroll-behavior-x:none;       /* 念のため横だけも書いておきます */
+  transform:translateZ(0);          /* 描画をGPUに任せて、固定した行と列のブレを抑えます */
+}
+#body.plan .gridwrap{flex:1;min-height:0}
+.grid{display:grid;grid-template-columns:112px repeat(7,86px);font-size:15px;min-width:min-content}
+/* 工事名の列は左に固定。横スワイプしても、どの工事か分かるようにします */
+.grid .job,.grid .resthd,.grid .yohd{
+  position:sticky;left:0;z-index:2;box-shadow:1px 0 0 var(--keisen);
+  backface-visibility:hidden;        /* スクロール中のにじみ・ズレを抑えます */
+}
+.grid .cathd{position:sticky;left:0;z-index:3}
+/* 曜日の見出しは上に固定。縦にスクロールしても残ります */
+.grid .hd{position:sticky;top:0;z-index:4;backface-visibility:hidden}
+/* 左上の角は、上にも左にも固定します */
+.grid .corner{
+  position:sticky;top:0;left:0;z-index:6;
+  box-shadow:1px 0 0 var(--keisen),0 1px 0 var(--keisen);
+  backface-visibility:hidden;
+}
+.grid .hd{
+  padding:8px 4px;text-align:center;border-bottom:1px solid var(--keisen);
+  border-left:1px solid var(--keisen2);background:#fff;
+}
+.grid .hd b{font-weight:700}
+.grid .hd span{font-size:12px;color:var(--usu)}
+.grid .hd.today{border-bottom:2px solid var(--midori);background:var(--kyo)}
+.grid .hd.today b,.grid .hd.today span{color:var(--midori);font-weight:900}
+.grid .hd.sat b{color:var(--kyoryoku)}
+.grid .hd.sun b{color:var(--aka)}
+.grid .corner{
+  padding:8px 10px;background:var(--kinari);border-bottom:1px solid var(--keisen);
+  font-size:12px;color:var(--usu);
+}
+/* 工事名の列 */
+.grid .job{padding:10px;background:#fff;border-bottom:1px solid var(--keisen)}
+/* 長い名前でも日本語の途中で折り返せるようにします(body は keep-all のため) */
+.grid .job .n{font-weight:700;line-height:1.3;word-break:break-all;overflow-wrap:anywhere}
+.grid .job .no{font-size:11px;color:var(--usu)}
+/* 請求済み。色と札は集計ページと同じにしています */
+.grid .job.billed{background:#e7eff7;box-shadow:1px 0 0 #c9dcee}
+.grid .job.billed .n{color:#2c5f8f}
+.grid .job .seitag{
+  display:inline-block;margin-top:3px;font-size:10px;font-weight:900;
+  color:#fff;background:#2c5f8f;border-radius:8px;padding:1px 6px;line-height:1.5;
+}
+/* セル */
+.grid .cell{
+  padding:8px 6px;background:#fff;border-bottom:1px solid var(--keisen);
+  border-left:1px solid var(--keisen2);line-height:1.55;font-weight:600;
+  min-height:44px;text-align:left;color:inherit;font-size:15px;width:100%;
+  border-top:0;border-right:0;
+}
+.grid .cell.today{background:#fdfcf8}
+/* 確認用アプリ:隠れている人がいるマスは、押すと全員出ます */
+.grid .cell.canopen{cursor:pointer}
+.grid .cell.canopen:hover{background:#fbf9f2}
+.grid .cell.planned.canopen:hover{background:#fff2d4}
+/* 予定日の印。メンバーが入っても色は残します */
+.grid .cell.planned{background:#fff6e0}
+.grid .cell.planned.today{background:#fff2d4}
+.grid .cell.planned.empty{color:#c9a227}
+.grid .cell.planned::before{
+  content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:#e8b400;
+}
+.grid .cell{position:relative}
+
+/* 工事の吹き出しの中の、予定日えらび */
+.jobpop .days2{display:flex;gap:4px;flex-wrap:wrap}
+.jobpop .days2 button{
+  flex:1;min-width:38px;min-height:46px;border-radius:8px;
+  border:1px solid var(--keisen);background:#fff;color:var(--usu2);
+  font-size:12px;font-weight:700;line-height:1.3;padding:2px 0;
+}
+.jobpop .days2 button.on{background:#e8b400;border-color:#e8b400;color:#3a2c00;font-weight:900}
+.jobpop .days2 button b{display:block;font-size:13px}
+.jobpop .days2 button.sat{color:var(--kyoryoku)}
+.jobpop .days2 button.sun{color:var(--aka)}
+.jobpop .days2 button.on.sat,.jobpop .days2 button.on.sun{color:#3a2c00}
+.grid .cell .cnt{font-size:11px;color:var(--usu);font-weight:400}
+.grid .cell .more{
+  font-size:12px;color:var(--midori);font-weight:700;background:var(--kyo);
+  border-radius:8px;text-align:center;margin-top:3px;padding:2px 0;
+}
+.grid .cell.empty{text-align:center;color:#b9b3a2;font-size:22px}
+.nm{white-space:nowrap}
+.nm.coop{color:var(--kyoryoku)}
+.nm.dup{text-decoration:underline wavy var(--aka);text-underline-offset:3px;font-weight:700}
+/* しるし。記号でも打った文字でも、名前と別の色・少し小さめで出します */
+.sc{color:var(--shokucho);font-weight:900;margin-right:1px;font-size:.85em}
+/* 名前どうしの区切り(中点)。名前より薄くします */
+.sep{color:#c2bcab;font-weight:400}
+/* 休み行 */
+.grid .rest{background:var(--yasumi);border-bottom:1px solid var(--keisen);font-weight:700;color:var(--usu);padding:10px}
+.grid .cell.rest{background:var(--yasumi);border-left:1px solid #ddd8cb;color:var(--usu);text-align:center;font-weight:700}
+.grid .cell.rest.empty{color:#b9b3a2;font-size:15px}
+/* 余 行(計算で出すだけ・読み取り専用) */
+.grid .yohd{background:var(--kiji);border-bottom:1px solid var(--kiwaku);font-weight:900;color:var(--ki);padding:10px 12px}
+
+/* --- 休み行・余行の見出し。どちらもたためます(既定はたたんだ状態) --- */
+/* 上ぞろえ。行が高くなったとき、見出しが空白の真ん中に浮かないようにします */
+.grid .resthd,.grid .yohd{display:flex;align-items:flex-start;gap:6px}
+.grid .resthd .tg,.grid .yohd .tg{
+  order:-1;flex-shrink:0;                 /* 左端に置きます */
+  min-height:30px;padding:0 9px;border-radius:15px;
+  border:1px solid var(--keisen);background:#fff;color:var(--usu2);
+  font-size:13px;font-weight:900;line-height:28px;
+}
+.grid .yohd .tg{border-color:var(--kiwaku);color:var(--ki)}
+/* たたんでいるとき = 人数だけ */
+.grid .cell.rest.closed,.grid .yo.closed{text-align:center;padding:6px 5px}
+.grid .cell.rest.closed .big,.grid .yo.closed .big{font-size:17px;font-weight:900;line-height:1.35}
+.grid .yo.closed .big{color:var(--ki)}
+.grid .cell.rest.closed .none,.grid .yo.closed .none{font-size:14px;line-height:1.35;color:#b9b3a2}
+.grid .yo{
+  padding:8px 6px;background:var(--kiji);border-bottom:1px solid var(--kiwaku);
+  border-left:1px solid #f0e3c2;line-height:1.6;font-weight:600;color:#8a6516;
+}
+.grid .yo .cnt{font-size:11px;color:var(--ki);font-weight:700}
+.grid .yo .none{text-align:center;color:#d8c391}
+/* 余は「・」でつないで折り返します(1人1行だと土日にとても長くなります) */
+.grid .yo{word-break:break-all;overflow-wrap:anywhere}
+.grid .yo .sep{color:#d8c391;font-weight:400}
+.grid .yo .more2{margin-left:4px;font-size:11px;font-weight:700;color:var(--ki)}
+.grid .yo .plus{border:none;background:#f3e2b6;color:#8a6516;border-radius:10px;padding:1px 8px;font-size:12px;font-weight:700}
+/* カテゴリ見出し(PCの「すべて」) */
+.grid .cathd{
+  grid-column:1/-1;padding:6px 12px;background:var(--kinari);
+  border-bottom:1px solid var(--keisen);font-size:12px;font-weight:900;color:var(--midori);
+}
+.guide{padding:8px 12px 0;font-size:12px;color:var(--usu);text-align:center}
+.legend{display:flex;justify-content:center;gap:14px;padding:6px 12px 10px;font-size:12px;font-weight:700}
+
+/* ============ 工事の追加・編集 ============ */
+.grid .job{cursor:pointer}
+/* カテゴリごとの一番下に置く「＋ 工事を追加」 */
+.addjob{background:var(--kinari);border-bottom:1px solid var(--keisen);padding:6px 10px}
+.addjob button{
+  min-height:44px;padding:0 16px;border-radius:10px;border:1.5px dashed var(--midori);
+  background:#fff;color:var(--midori);font-size:15px;font-weight:700;
+}
+.addjob button span{font-size:12px;font-weight:600;color:var(--usu)}
+/* 「隠す」にしたのに、予定があるので表に残っている工事 */
+.grid .job .kept{
+  margin-top:4px;background:var(--yasumi);border:1px solid var(--keisen);
+  border-radius:6px;padding:3px 6px;
+  /* 日本語を途中で折れるようにします。これが無いと1行のまま伸びて、
+     列からはみ出し、日付のセルの名前に重なります */
+  word-break:break-all;overflow-wrap:anywhere;
+}
+.grid .job .kept .badge{font-size:11px;font-weight:700;color:var(--usu2);line-height:1.3}
+/* 開始日が来ているのに、まだ人が入っていない工事 */
+/* 出す工事が1件も無いときのお知らせ */
+.nodata{padding:40px 16px;text-align:center;color:var(--usu);font-size:15px;line-height:1.9}
+
+.grid .job .waiting{
+  /* 札と同じく、日本語を途中で折れるようにします */
+  word-break:break-all;overflow-wrap:anywhere;
+  margin-top:3px;display:inline-block;background:var(--kiji);border:1px solid var(--kiwaku);
+  border-radius:6px;padding:1px 6px;font-size:10px;font-weight:700;color:var(--ki);line-height:1.4;
+}
+.popmask{position:fixed;inset:0;z-index:39;display:none;background:transparent}
+.popmask.on{display:block}
+.jobpop{
+  position:fixed;z-index:40;width:420px;max-width:calc(100vw - 24px);
+  /* 画面からはみ出さないよう、高さに上限をつけて中身をスクロールさせます */
+  max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);
+  background:#fff;border:1px solid var(--keisen);border-radius:12px;
+  box-shadow:0 12px 32px rgba(43,42,38,.28);display:none;
+  flex-direction:column;overflow:hidden;
+}
+.jobpop.on{display:flex}
+.jobpop .in{overflow-y:auto}
+.jobpop .arrow{
+  position:absolute;width:14px;height:14px;background:#fff;transform:rotate(45deg);
+}
+.jobpop.below .arrow{top:-8px;border-left:1px solid var(--keisen);border-top:1px solid var(--keisen)}
+.jobpop.above .arrow{bottom:-8px;border-right:1px solid var(--keisen);border-bottom:1px solid var(--keisen)}
+.jobpop .in{position:relative;padding:14px 16px 16px;display:flex;flex-direction:column;gap:10px}
+/* 画面に収まりきらず、位置をずらしたときは三角を出しません */
+.jobpop.noarrow .arrow{display:none}
+.jobpop .ttl{font-size:15px;font-weight:900;color:var(--midori)}
+.jobpop hr{border:0;border-top:1px solid var(--keisen);margin:2px 0}
+/* ラベルは左、入力は右 */
+.jobpop .fld{display:grid;grid-template-columns:88px 1fr;gap:10px;align-items:center}
+.jobpop .fld .lb{font-size:14px;font-weight:700;color:var(--usu2);line-height:1.3}
+.jobpop .fld .lb small{display:block;font-size:11px;font-weight:600;color:var(--usu)}
+.jobpop input{
+  width:100%;min-height:48px;border:1.5px solid var(--midori);border-radius:8px;
+  padding:0 12px;font-size:16px;background:#fff;font-family:inherit;
+}
+.jobpop input.sub{border-color:var(--keisen)}
+.jobpop .cats2{display:flex;gap:6px;flex-wrap:wrap}
+.jobpop .cats2 button{
+  min-height:44px;padding:0 12px;border-radius:22px;border:1px solid var(--keisen);
+  background:#fff;font-size:14px;font-weight:600;color:var(--moji);
+}
+.jobpop .cats2 button.on{background:var(--midori);color:#fff;border-color:var(--midori);font-weight:700}
+.jobpop .tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.jobpop .tools button{
+  min-height:40px;padding:0 12px;border-radius:8px;border:1px solid var(--keisen);
+  background:#fff;font-size:14px;font-weight:700;color:var(--usu2);
+}
+.jobpop .tools button:disabled{color:#cfc9ba;cursor:default}
+.jobpop .tools .hide.on{border-color:var(--ki);color:var(--ki);background:var(--kiji)}
+.jobpop .copyw{
+  width:100%;min-height:44px;border-radius:8px;border:1.5px solid var(--midori);
+  background:var(--kyo);color:var(--midori);font-size:15px;font-weight:700;
+}
+.jobpop .copyw:disabled{border-color:var(--keisen);background:#f4f1e9;color:#b9b3a2;cursor:default}
+.jobpop .copyw span{font-size:12px;font-weight:600;color:var(--usu2)}
+.jobpop .copyw:disabled span{color:#b9b3a2}
+.jobpop .err{font-size:13px;font-weight:700;color:var(--aka)}
+.jobpop .btns{
+  display:flex;gap:10px;justify-content:flex-end;flex-shrink:0;
+  padding:10px 16px;border-top:1px solid var(--keisen);background:#fff;
+}
+.jobpop .btns button{
+  min-height:44px;padding:0 20px;border-radius:8px;font-size:15px;font-weight:700;
+  border:1px solid var(--keisen);background:#fff;color:var(--usu2);
+}
+.jobpop .btns .ok{background:var(--midori);color:#fff;border-color:var(--midori);font-weight:900}
+
+/* ============ 下タブ ============ */
+.tabs{
+  margin-top:auto;display:grid;grid-template-columns:repeat(4,1fr);
+  background:#fff;border-top:1px solid var(--keisen);
+  padding:6px 4px calc(10px + env(safe-area-inset-bottom));position:sticky;bottom:0;z-index:20;
+}
+.tabs button{border:none;background:none;text-align:center;padding:6px 0;color:var(--usu);min-height:44px}
+.tabs button .i{font-size:20px}
+.tabs button .l{font-size:12px;font-weight:600}
+.tabs button.on{color:var(--midori)}
+.tabs button.on .l{font-weight:900}
+
+/* ============ 選択シート ============ */
+.mask{position:fixed;inset:0;background:rgba(43,42,38,.38);z-index:30;display:none}
+.mask.on{display:block}
+.sheet{
+  position:fixed;left:0;right:0;bottom:0;background:#fff;border-radius:18px 18px 0 0;
+  z-index:31;display:none;flex-direction:column;max-height:92vh;max-height:92dvh;
+  box-shadow:0 -8px 30px rgba(0,0,0,.25);
+}
+.sheet.on{display:flex}
+.sheet .sh{background:var(--midori);color:#fff;padding:14px 16px;border-radius:18px 18px 0 0}
+.sheet .sh .j{font-size:18px;font-weight:900}
+.sheet .sh .d{font-size:15px;opacity:.9;margin-top:2px}
+.sheet .sb{padding:14px 14px 8px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;flex:1}
+.sheet .sf{
+  display:flex;gap:10px;padding:12px 14px calc(18px + env(safe-area-inset-bottom));
+  border-top:1px solid var(--keisen);
+}
+.sheet .sf button{min-height:50px;border-radius:10px;font-size:15px;font-weight:700;flex-shrink:0;padding:0 14px}
+.btn-clear{border:1px solid var(--aka);background:#fff;color:var(--aka)}
+.btn-cancel{border:1px solid var(--keisen);background:#fff;color:var(--usu2)}
+.btn-ok{flex:1;border:none;background:var(--midori);color:#fff;font-size:18px;font-weight:900}
+.copyprev{
+  min-height:48px;border-radius:10px;border:1.5px solid var(--midori);background:var(--kyo);
+  color:var(--midori);font-size:15px;font-weight:700;text-align:left;padding:0 14px;
+}
+.copyprev:disabled{border-color:var(--keisen);background:#f4f1e9;color:#b9b3a2;cursor:default}
+.copyprev span{font-size:13px;font-weight:600;color:var(--usu2)}
+.copyprev.planoff{background:#fff6e0;border-color:#e8cf8a;color:#8a6516}
+.grp{}
+.grp.yo{background:var(--kiji);border:1px solid var(--kiwaku);border-radius:12px;padding:12px}
+/* 🏭 工場の人。名簿より上に置きます */
+.grp.fac{background:#eef2f7;border:1px solid #cbd8e6;border-radius:12px;padding:12px}
+.grp.fac .gt{color:#2c5f8f}
+.grp.fac .gt .sum{color:#2c5f8f}
+.grp.fac .ghint{color:#5b7fa6}
+.grp .gt{font-size:15px;font-weight:900;color:var(--ki);margin-bottom:10px}
+.grp .gt.sub{font-size:14px;font-weight:700;color:var(--usu);margin-bottom:8px}
+.grp .gt .sum{margin-left:8px;font-size:13px;font-weight:700;color:#8a6516}
+.grp .ghint{margin-top:10px;font-size:12px;color:#8a6516;line-height:1.5}
+/* 「選んでいる人」の欄。名簿の上に置いて、誰を選んだか一目で分かるようにします */
+.grp.chosen{background:var(--kyo);border:1px solid var(--midori);border-radius:12px;padding:12px}
+.grp.chosen.off{display:none}
+.grp.chosen .gt{
+  color:var(--midori);display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:10px;
+}
+.grp.chosen .gt .sum{margin-left:0;color:var(--midori)}
+.grp.chosen .gt .hint4{margin-left:auto;font-size:12px;font-weight:700;color:var(--usu)}
+/* 人数が多いときは、この欄の中だけをスクロールさせます
+   (欄がどこまでも伸びて、下の名簿を押し下げてしまうのを防ぎます)
+   チップ1つが44px + すき間8px なので、4行ぶんを目安にしています。
+   スマホの幅だと10名でちょうど4行になります。 */
+.grp.chosen .chips{max-height:208px;overflow-y:auto;overscroll-behavior:contain}
+/* それでも下に隠れる人がいるときは、はっきり知らせます
+   (見えている数を数えて「1人足りない」と思われるのを防ぐため) */
+.grp.chosen .more5{
+  margin-top:6px;font-size:12px;font-weight:700;color:var(--midori);
+  background:#fff;border:1px dashed var(--midori);border-radius:8px;
+  padding:5px 8px;text-align:center;
+}
+/* 外す目印の ✕ は、名前から少し離して小さめに */
+.grp.chosen .chip .x{margin-left:6px;font-size:.85em;opacity:.85}
+/* 緑のチップの上でも、しるし(◎など)が読めるようにします */
+.chip.on .sc{color:#bdf0d2}
+
+.chips{display:flex;flex-wrap:wrap;gap:10px}
+.chip{
+  min-height:44px;padding:0 18px;border-radius:22px;border:1px solid var(--keisen);
+  background:#fff;font-size:16px;font-weight:700;
+}
+.chip.on{background:var(--midori);color:#fff;border-color:var(--midori)}
+.chip.coop{color:var(--kyoryoku)}
+.chip.on.coop{color:#fff}
+/* 配置ずみ・休みは「名前だけ + 色」で見分けます(行き先は出しません) */
+.chip.placed{border:1.5px dashed #b9b3a2;background:#f4f1e9;color:var(--usu2)}
+.chip.rest{background:var(--yasumi);color:var(--usu)}
+.extra-row{display:flex;gap:8px}
+.extra-row input{
+  flex:1;min-height:44px;border:1px solid var(--keisen);border-radius:10px;
+  padding:0 12px;font-size:16px;background:#fff;
+}
+.extra-row button{min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--midori);background:#fff;color:var(--midori);font-size:15px;font-weight:700}
+/* しるし選択の吹き出し(押したチップのすぐ横に出ます) */
+.markmask{position:fixed;inset:0;z-index:44;display:none;background:transparent}
+.markmask.on{display:block}
+.markpop{
+  position:fixed;z-index:45;display:none;background:#fff;
+  border:1px solid var(--keisen);border-radius:12px;
+  box-shadow:0 12px 32px rgba(43,42,38,.3);width:max-content;max-width:calc(100vw - 24px);
+  max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);flex-direction:column;overflow:hidden;
+}
+.markpop.on{display:flex}
+.markpop .in{overflow-y:auto}
+.markpop.noarrow .arrow{display:none}
+.markpop .arrow{position:absolute;width:12px;height:12px;background:#fff;transform:rotate(45deg)}
+.markpop.below .arrow{top:-7px;border-left:1px solid var(--keisen);border-top:1px solid var(--keisen)}
+.markpop.above .arrow{bottom:-7px;border-right:1px solid var(--keisen);border-bottom:1px solid var(--keisen)}
+.markpop .in{position:relative;padding:10px 12px}
+.markpop .who{font-size:13px;font-weight:700;color:var(--usu);margin-bottom:8px}
+.markpop .row{display:flex;gap:6px}
+.markpop .row button{
+  min-height:48px;min-width:56px;border-radius:10px;border:1px solid var(--keisen);
+  background:#fff;font-size:18px;font-weight:700;
+}
+.markpop .row button.on{background:var(--midori);color:#fff;border-color:var(--midori);font-weight:900}
+.markpop .row button.none{font-size:14px}
+.markpop .hint2{font-size:11px;color:var(--usu);margin-top:6px;line-height:1.6}
+/* その他:自由に打てるしるし */
+.markpop .freemark{display:flex;align-items:center;gap:6px;margin-top:8px}
+.markpop .freemark .lb3{font-size:12px;font-weight:700;color:var(--usu2);flex-shrink:0}
+.markpop .freemark input{
+  flex:1;min-width:90px;min-height:44px;border:1px solid var(--keisen);border-radius:8px;
+  padding:0 10px;font-size:16px;background:#fff;
+}
+.markpop .freemark .ok3{
+  min-height:44px;padding:0 12px;border-radius:8px;border:1px solid var(--midori);
+  background:#fff;color:var(--midori);font-size:14px;font-weight:700;flex-shrink:0;
+}
+.markpop .off{
+  display:block;width:100%;margin-top:8px;min-height:44px;border-radius:10px;
+  border:1px solid var(--aka);background:#fff;color:var(--aka);font-size:14px;font-weight:700;
+}
+.nowsel{font-size:15px;font-weight:700;color:var(--midori);text-align:center;background:var(--kyo);border-radius:8px;padding:8px}
+.nowsel b{font-size:18px;font-weight:900}
+
+/* ============ 設定(職長) ============ */
+/* ============ メンバー(名簿)============ */
+.setbar{padding:12px;background:#fff;border-bottom:1px solid var(--keisen);display:flex;flex-direction:column;gap:10px}
+.setbar input{width:100%;min-height:44px;border:1px solid var(--keisen);border-radius:10px;padding:0 12px;font-size:16px}
+.setbar .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.setbar .cnt{font-size:15px;font-weight:700;color:var(--midori);margin-left:auto}
+.toggle{min-height:44px;padding:0 14px;border-radius:22px;border:1px solid var(--keisen);background:#fff;font-size:14px;font-weight:700}
+.toggle.on{background:var(--midori);color:#fff;border-color:var(--midori)}
+.toggle.add{border-color:var(--midori);color:var(--midori);border-style:dashed;border-width:1.5px}
+.wlist{display:flex;flex-direction:column;gap:8px;padding:12px}
+.wrow{
+  display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  background:#fff;border:1px solid var(--keisen);border-radius:12px;padding:10px 12px;min-height:60px;
+}
+.wrow.off{background:var(--yasumi);border-style:dashed}
+.wrow .nm2{font-size:18px;font-weight:700}
+.wrow .nm2.coop{color:var(--kyoryoku)}
+.wrow .sub{font-size:12px;color:var(--usu);margin-top:2px}
+.wrow .ord{
+  font-size:11px;color:#c2bcab;font-weight:700;width:26px;flex-shrink:0;text-align:right;
+}
+.wrow .tag{
+  margin-left:auto;flex-shrink:0;font-size:11px;font-weight:700;color:var(--usu);
+  background:var(--yasumi);border:1px solid var(--keisen);border-radius:10px;padding:2px 8px;
+}
+/* まとめて追加 */
+.bulk{padding:12px;display:flex;flex-direction:column;gap:10px}
+.bulk textarea{
+  width:100%;min-height:200px;border:1.5px solid var(--midori);border-radius:10px;
+  padding:10px 12px;font-size:16px;font-family:inherit;line-height:1.7;background:#fff;
+}
+.bulk .ex{
+  font-size:12px;color:var(--usu);line-height:1.7;background:#fff;
+  border:1px solid var(--keisen);border-radius:10px;padding:10px 12px;
+}
+.bulk .ex b{color:var(--moji)}
+.bulk .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.bulk .row .lb{font-size:14px;font-weight:700;color:var(--usu2)}
+.bulk .btns{display:flex;gap:10px;justify-content:flex-end}
+.bulk .btns button{min-height:48px;padding:0 20px;border-radius:10px;border:1px solid var(--keisen);background:#fff;font-size:15px;font-weight:700;color:var(--usu2)}
+.bulk .btns .ok{background:var(--midori);color:#fff;border-color:var(--midori);font-weight:900}
+/* 選択シートの「名簿を直す」 */
+.fixlink{
+  margin-top:10px;font-size:13px;color:var(--midori);font-weight:700;
+  background:none;border:none;text-decoration:underline;padding:6px 0;min-height:36px;
+}
+.chip.unknown{border:1.5px dashed var(--ki);background:#fffaf0;color:#8a6516}
+.chip.unknown.on{background:var(--midori);color:#fff;border-style:solid;border-color:var(--midori)}
+
+/* ============ 配信 ============ */
+.wknav2{
+  padding:10px 12px;background:#fff;border-bottom:1px solid var(--keisen);
+  text-align:center;font-weight:900;font-size:17px;
+}
+.wknav2 span{font-size:12px;color:var(--usu);font-weight:400}
+.daypills{display:flex;gap:6px;padding:12px 10px}
+.daypills button{
+  flex:1;min-height:52px;border-radius:10px;border:1px solid var(--keisen);
+  background:#fff;line-height:1.2;position:relative;padding:0;
+}
+.daypills button .w{font-size:14px;font-weight:700}
+.daypills button .d{font-size:11px;color:var(--usu)}
+.daypills button.sat .w{color:var(--kyoryoku)}
+.daypills button.sun .w{color:var(--aka)}
+.daypills button.on{background:var(--midori);border-color:var(--midori)}
+.daypills button.on .w{color:#fff;font-weight:900}
+.daypills button.on .d{color:#fff;opacity:.85}
+.daypills button.on.sat .w,.daypills button.on.sun .w{color:#fff}
+.daypills button .dot{
+  position:absolute;top:5px;right:6px;width:9px;height:9px;border-radius:50%;
+  background:#e5604a;border:1.5px solid #fff;
+}
+/* ============ チェック ============ */
+.checks{display:flex;flex-direction:column;gap:12px;padding:2px 12px 14px}
+.card{border-radius:12px;padding:14px}
+.card .ct{display:flex;align-items:center;gap:8px}
+.card .ct .t{font-size:16px;font-weight:900}
+.card .ct .n{
+  margin-left:auto;color:#fff;border-radius:14px;padding:3px 12px;
+  font-size:14px;font-weight:900;white-space:nowrap;
+}
+.card.dup{background:#fbe9e5;border:1px solid #e5b8ae}
+.card.dup .ct .t{color:var(--aka)}
+.card.dup .ct .n{background:var(--aka)}
+.card.yo2{background:var(--kiji);border:1px solid var(--kiwaku)}
+.card.yo2 .ct .t{color:var(--ki)}
+.card.yo2 .ct .n{background:var(--ki)}
+.card.rest2{background:var(--yasumi);border:1px solid var(--keisen)}
+.card.rest2 .ct .t{color:var(--usu)}
+.card.rest2 .ct .n{background:var(--usu)}
+.card .body2{margin-top:10px;display:flex;flex-wrap:wrap;gap:8px}
+.card .msg{font-size:14px;color:var(--usu);margin-top:6px}
+.card.dup .msg{color:var(--aka)}
+.card.yo2 .msg{color:#8a6516}
+/* 重複した人 */
+.dupitem{
+  display:inline-flex;flex-direction:column;background:#fff;border:1px solid #e5b8ae;
+  border-radius:12px;padding:8px 16px;text-align:left;
+}
+.dupitem .nm3{font-size:17px;font-weight:700;white-space:nowrap}
+.dupitem .nm3 .wv{text-decoration:underline wavy var(--aka);text-underline-offset:3px}
+.dupitem .to{font-size:12px;color:var(--aka);font-weight:600;margin-top:2px}
+/* 余・休みの名前 */
+.pill2{
+  background:#fff;border:1px solid var(--kiwaku);border-radius:20px;
+  padding:8px 16px;font-size:16px;font-weight:700;
+}
+.pill2.coop{color:var(--kyoryoku)}
+.card.rest2 .pill2{border-color:var(--keisen);color:var(--usu2)}
+.sumcard{
+  background:#fff;border:1px solid var(--keisen);border-radius:12px;padding:12px;
+  text-align:center;font-size:16px;font-weight:700;
+}
+.sumcard b{color:var(--midori);font-size:20px;font-weight:900}
+.sumcard .sub2{font-size:12px;color:var(--usu);font-weight:400;margin-top:4px}
+
+.linebox{
+  margin:2px 12px 0;background:#fff;border:1px solid var(--keisen);border-radius:12px;
+  padding:16px;font-size:16px;line-height:1.9;white-space:pre-wrap;word-break:break-all;
+}
+.linebox .head{font-weight:900}
+.linebox .job{font-weight:700;margin-top:6px}
+.linebox .job:first-of-type{margin-top:0}
+.linebox .foot{color:var(--usu2)}
+.copywrap{padding:14px 12px 8px}
+.copybtn{
+  width:100%;min-height:56px;border-radius:12px;border:none;
+  background:#06c755;color:#fff;font-size:18px;font-weight:900;
+}
+.copyfall{margin:0 12px 12px}
+.copyfall textarea{
+  width:100%;min-height:160px;border:1px solid var(--keisen);border-radius:10px;
+  padding:10px;font-size:15px;font-family:inherit;line-height:1.8;background:#fff;
+}
+.copyfall .t{font-size:13px;color:var(--aka);font-weight:700;margin-bottom:6px}
+
+@media (min-width:1024px){
+  .wknav2{padding:5px 12px;font-size:15px}
+  .daypills{padding:6px 10px;gap:6px}
+  .daypills button{min-height:44px}
+  .checks{max-width:760px;margin:0 auto;padding:6px 12px 14px}
+  .card{padding:12px}
+  .card .ct .t{font-size:15px}
+  .pill2{padding:6px 14px;font-size:15px}
+  .linebox{font-size:15px;line-height:1.8;padding:14px;max-width:640px;margin:2px auto 0}
+  .copywrap{max-width:640px;margin:0 auto}
+  .copyfall{max-width:640px;margin:0 auto 12px}
+}
+
+/* ============ これから作る画面 ============ */
+.soon{padding:60px 24px;text-align:center;color:var(--usu);line-height:1.9}
+.soon .e{font-size:40px}
+
+/* ============ トースト ============ */
+.toast{
+  position:fixed;left:50%;bottom:96px;transform:translateX(-50%);
+  background:#2b2a26;color:#fff;border-radius:16px;padding:10px 18px;
+  font-size:14px;font-weight:700;z-index:50;display:none;max-width:90vw;text-align:center;
+}
+.toast.on{display:block}
+/* ノッチで隠れる幅を測るための、目に見えない箱です(JavaScriptから読みます) */
+#safeprobe{
+  position:fixed;top:0;left:0;width:0;height:0;visibility:hidden;pointer-events:none;
+  padding-left:var(--sal);padding-right:var(--sar);
+}
+
+/* =====================================================================
+   PC(1024px以上)= 一覧性優先。画面いっぱい・行を詰める
+   ※ スマホ(1023px以下)は上の指定のまま。大きさは変えていません
+   ===================================================================== */
+@media (min-width:1024px){
+  body{background:var(--kinari)}
+  /* 最大幅・外枠・影をやめて画面いっぱいに */
+  #app{max-width:none;margin:0;border:0;border-radius:0;box-shadow:none;min-height:100vh}
+
+  /* --- 上まわりを薄く(だいたい半分の高さ) --- */
+  .head{padding:3px 12px}
+  .head .t{font-size:14px;font-weight:900}
+  .head .s{font-size:11px}
+  .obi{padding:4px 12px;font-size:12px}
+
+  /* 横に余裕があるので、日付をボタンと同じ行に戻します */
+  .weeknav{padding:3px 10px;gap:6px;flex-wrap:nowrap;justify-content:flex-start}
+  .weeknav .lbl{flex:1;order:0;margin-bottom:0}
+  .weeknav button{min-width:32px;min-height:26px;font-size:13px;border-radius:6px}
+  .weeknav button.now,.weeknav button.mv{padding:0 10px;font-size:13px}
+  .weeknav .lbl{line-height:1.1}
+  .weeknav .lbl b{font-size:15px}
+  .weeknav .lbl span{font-size:11px}
+
+  .cats{padding:4px 10px;gap:6px;overflow:visible}
+  .cats button{min-height:26px;padding:0 12px;font-size:13px;border-radius:13px}
+
+  /* --- 表 --- */
+  .gridwrap{overflow-x:visible}
+  /* 平日1に対して 土日0.7。工事名の列は読める幅を確保します */
+  .grid{
+    grid-template-columns:240px repeat(5,minmax(0,1fr)) repeat(2,minmax(0,.7fr));
+    font-size:13px;min-width:0;
+  }
+  .grid .corner{padding:4px 8px;font-size:11px}
+  .grid .hd{padding:4px 3px}
+  .grid .hd span{font-size:11px}
+
+  /* 工事名。3行まで折り返し、入らないものだけ … 。縦は中央ぞろえ */
+  .grid .job{padding:4px 10px;display:flex;flex-direction:column;justify-content:center}
+  /* 3行まで折り返し、それでも入らないときだけ … で省略(全文はマウスオーバー) */
+  .grid .job .n{
+    font-size:14px;line-height:1.28;font-weight:700;
+    display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
+    overflow:hidden;text-overflow:ellipsis;
+    word-break:break-all;overflow-wrap:anywhere;
+  }
+  .grid .job .no{font-size:10px;line-height:1.2}
+
+  /* セルは行の高さを下げる */
+  .grid .cell{padding:4px 5px;line-height:1.38;font-size:13px;min-height:0}
+  .grid .cell .cnt{font-size:10px;line-height:1.2}
+  .grid .cell.empty{font-size:15px;padding:2px}
+  .grid .cell .more{font-size:11px;padding:0;margin-top:1px}
+  .grid .rest{padding:4px 8px;font-size:13px}
+  .grid .cell.rest{padding:4px 5px}
+  .grid .cathd{padding:3px 8px;font-size:11px}
+
+  /* --- 🟡余 行:たたんだ状態を既定に。ふつうの行と同じ高さ --- */
+  .grid .yohd{
+    padding:4px 6px 4px 4px;font-size:13px;
+    display:flex;align-items:center;gap:6px;
+  }
+  .grid .yohd .tg{
+    order:-1;flex-shrink:0;                 /* 左端に小さく */
+    min-height:20px;padding:0 6px;border-radius:10px;
+    border:1px solid var(--kiwaku);background:#fff;color:var(--ki);
+    font-size:11px;font-weight:700;line-height:18px;
+  }
+  .grid .yo{padding:4px 5px;line-height:1.38}
+  .grid .yo .cnt{font-size:10px}
+  /* たたんでいるとき = 人数だけ大きく1行 */
+  .grid .yo.closed{text-align:center;padding:4px 5px}
+  .grid .yo.closed .big{font-size:15px;font-weight:900;color:var(--ki);line-height:1.3}
+  .grid .yo.closed .none{font-size:13px;line-height:1.3}
+
+  .guide{display:none}
+  .legend{padding:4px 12px 6px;font-size:11px;gap:12px}
+
+  /* --- 下タブも薄く --- */
+  .tabs{grid-template-columns:repeat(4,1fr);padding:1px 4px 3px}
+  .tabs button{min-height:30px;padding:1px 0}
+  .tabs button .i{font-size:13px;line-height:1.15}
+  .tabs button .l{font-size:10px}
+
+  /* --- 選択シートは中央のモーダル(大きさは触りません) --- */
+  .sheet{
+    left:50%;top:50%;right:auto;bottom:auto;transform:translate(-50%,-50%);
+    width:520px;max-height:86vh;border-radius:14px;
+  }
+  .sheet .sh{border-radius:14px 14px 0 0}
+  .sheet .sf{padding:12px 14px 16px}
+
+  .wlist{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+}
+@media (max-width:1023px){
+  .pconly{display:none !important}
+
+  /* たたんだときに隠すもの。スマホだけの働きにしておかないと、
+     PCでは「たたむバー」が出ないので、ひらけなくなってしまいます */
+  #app.fold .obi.last,
+  #app.fold #body.plan .weeknav,
+  #app.fold #body.plan .cats,
+  #app.fold #body.plan .filterbar,
+  #app.fold #body.plan .legend{display:none}
+}
+/* たたむバーはスマホだけ。PCは今までどおりです */
+@media (min-width:1024px){
+  .foldbar{display:none !important}
+}
+
+/* =====================================================================
+   スマホを横向きにしたとき(幅1023px以下 かつ 横長)
+     ・PC版には切り替えず、スマホ用のレイアウトのまま使います
+     ・縦が狭くなるので、上まわりと下タブを薄くします
+     ・横が広くなるので、日付の列を伸ばして7日ぶん見えるようにします
+   ===================================================================== */
+@media (max-width:1023px) and (orientation:landscape){
+
+  /* ---- 上まわりを薄く ---- */
+  .head{padding:5px 12px}
+  .head .t{font-size:14px;font-weight:900}
+  .head .s{font-size:11px}
+  .obi{padding:4px 12px;font-size:12px}
+  /* 最終編集の帯は目立たせたいので、縮めすぎないようにします */
+  .obi.last{padding:4px 12px;font-size:13px}
+  .obi.last .who,.obi.last .when{font-size:14px}
+  .obi.last .me2{min-height:24px;font-size:11px}
+
+  /* 横向きも横に余裕があるので、日付をボタンと同じ行に戻します */
+  .weeknav{padding:4px 10px;gap:6px;flex-wrap:nowrap;justify-content:flex-start}
+  .weeknav .lbl{flex:1;order:0;margin-bottom:0}
+  .weeknav button{min-width:40px;min-height:32px;font-size:15px;border-radius:7px}
+  .weeknav button.now,.weeknav button.mv{padding:0 10px;font-size:13px}
+  .weeknav .lbl{line-height:1.15}
+  .weeknav .lbl b{font-size:15px}
+  .weeknav .lbl span{font-size:11px}
+
+  .cats{padding:5px 10px 4px;gap:6px}
+  .cats button{min-height:32px;padding:0 12px;font-size:13px;border-radius:16px}
+
+  .filterbar{padding:0 10px 5px;gap:8px}
+  .filterbar .seg button{min-height:30px;padding:0 12px;font-size:13px}
+  .filterbar .seg button:first-child{border-radius:15px 0 0 15px}
+  .filterbar .seg button:last-child{border-radius:0 15px 15px 0}
+  .filterbar .pick2{min-height:30px;padding:0 12px;font-size:13px;border-radius:15px}
+  .filterbar .fmsg{font-size:11px}
+
+  /* ---- 表 ----
+     日付の列を「最低84px・余った幅は山分け」にします。
+     画面が広ければ7日ぶんが一度に見え、狭ければ今までどおり横スクロールします。
+     工事名の列と曜日の行の固定は、縦向きと同じしくみのまま効きます      */
+  .grid{grid-template-columns:104px repeat(7,minmax(84px,1fr))}
+  .grid .job{padding:8px}
+  .grid .cell{padding:6px 5px}
+
+  /* ---- 下タブ:絵文字と文字を横に並べて薄くします ---- */
+  .tabs{padding:2px 4px calc(4px + env(safe-area-inset-bottom))}
+  .tabs button{
+    min-height:38px;padding:2px 0;
+    display:flex;align-items:center;justify-content:center;gap:6px;
+  }
+  .tabs button .i{font-size:16px}
+  .tabs button .l{font-size:12px}
+
+  /* ---- 名前を選ぶシート:縦が狭いので上下を詰めます ---- */
+  .sheet{max-height:96vh;max-height:96dvh}
+  .sheet .sh{padding:8px 14px}
+  .sheet .sh .j{font-size:16px}
+  .sheet .sh .d{font-size:13px}
+  .sheet .sb{padding:10px 12px 6px;gap:10px}
+  .sheet .sf{padding:8px 12px calc(10px + env(safe-area-inset-bottom))}
+  .sheet .sf button{min-height:42px;font-size:14px}
+  .sheet .sf .btn-ok{font-size:16px}
+
+  /* ---- 表に使える高さをかせぎます ----
+     ・カテゴリと絞り込みを、同じ行に横に並べます
+     ・「◀ 横にスワイプ ◀」の案内は、横向きでは7日ぶん全部見えるので消します
+     ・下の色の説明は薄くします                                        */
+  #body.plan{
+    display:grid;
+    grid-template-columns:minmax(0,auto) minmax(0,1fr);
+    grid-template-rows:auto auto minmax(0,1fr) auto;
+  }
+  #body.plan .weeknav{grid-column:1 / -1;grid-row:1}
+  #body.plan .cats{grid-column:1;grid-row:2;padding:5px 4px 4px 10px}
+  #body.plan .filterbar{
+    grid-column:2;grid-row:2;align-self:center;
+    justify-content:flex-end;padding:0 10px 0 6px;
+  }
+  /* 絞り込みのボタンは1行に。件数の文は、入りきらないときだけ下の行に回します
+     (日本語は途中で折り返さない設定にしているため、無理に押し込むと切れてしまいます) */
+  #body.plan .filterbar{flex-wrap:wrap;row-gap:2px;column-gap:8px}
+  #body.plan .filterbar .fmsg{flex:1 1 100%;text-align:right;line-height:1.25}
+  /* ボタンが行の高さいっぱいに伸びないようにします */
+  #body.plan .cats{align-items:center}
+  #body.plan .gridwrap{grid-column:1 / -1;grid-row:3}
+  #body.plan .guide{display:none}
+  #body.plan .legend{grid-column:1 / -1;grid-row:4;padding:3px 12px 4px;font-size:11px;gap:12px}
+
+  /* 週の見出しは1行にまとめます */
+  .weeknav .lbl b{display:inline;font-size:14px}
+  .weeknav .lbl span{margin-left:6px}
+
+  /* ---- 配信の文面 ----
+     横向きだと1行が長くなりすぎて、LINEでの見え方と離れてしまうため、
+     幅を抑えて中央に置きます。コピーする中身は変わりません        */
+  .linebox{max-width:620px;margin:2px auto 0;padding:14px;font-size:15px;line-height:1.8}
+  .copywrap{max-width:620px;margin:0 auto;padding:10px 12px 8px}
+  .copyfall{max-width:620px;margin:0 auto 12px}
+  .copyfall textarea{min-height:120px}
+
+  /* 「選んでいる人」の欄は、縦が狭いぶん低くします(2行ぶん) */
+  .grp.chosen .chips{max-height:112px}
+
+  /* ---- メンバー一覧は、横に広いので2列に ---- */
+  .wlist{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:10px 12px}
+
+  /* =============== ノッチ(カメラの出っぱり)よけ ===============
+     iPhoneを横向きにすると、画面の左右どちらかがカメラの出っぱりに隠れます。
+     隠れる幅ぶんだけ、中身を内側に寄せます。背景は端まで伸ばしたままにして、
+     帯が途中で切れて見えないようにしています。                            */
+  .head{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
+  .obi{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
+  /* .obi.last は上で padding をまとめて指定しているぶん、こちらが負けてしまうので
+     同じ強さで指定し直します(そうしないとノッチの下にもぐります) */
+  .obi.last{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
+  .weeknav{padding-left:calc(10px + var(--sal));padding-right:calc(10px + var(--sar))}
+  .tabs{padding-left:calc(4px + var(--sal));padding-right:calc(4px + var(--sar))}
+
+  /* 予定を組むタブ(カテゴリは左はし、絞り込みは右はしに置いてあります) */
+  #body.plan .cats{padding-left:calc(10px + var(--sal))}
+  #body.plan .filterbar{padding-right:calc(10px + var(--sar))}
+  #body.plan .legend{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
+  /* そのほかのタブ(チェック・配信・メンバー)は、まとめて内側に寄せます */
+  #body:not(.plan){padding-left:var(--sal);padding-right:var(--sar)}
+
+  /* 表。スクロールする枠ごと内側に寄せます。こうすると、左に固定している
+     工事名の列は枠の左はし(=ノッチの外側)で止まります。枠の内側に余白を
+     取るやり方だと、ブラウザによって固定位置の数え方が違うため避けました */
+  .gridwrap{margin-left:var(--sal);margin-right:var(--sar)}
+
+  /* 名前を選ぶシート */
+  .sheet .sh{padding-left:calc(14px + var(--sal));padding-right:calc(14px + var(--sar))}
+  .sheet .sb{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
+  .sheet .sf{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
+
+  /* 吹き出し。置く場所はJavaScript側でも避けています */
+  .jobpop,.markpop,.daypop,.pastpop{
+    max-width:calc(100vw - 24px - var(--sal) - var(--sar));
+  }
+  /* まん中に出すものは、ノッチのぶんだけ中心をずらします */
+  .pastpop{margin-left:calc((var(--sal) - var(--sar)) / 2)}
+  .toast{margin-left:calc((var(--sal) - var(--sar)) / 2);max-width:calc(90vw - var(--sal) - var(--sar))}
+}
