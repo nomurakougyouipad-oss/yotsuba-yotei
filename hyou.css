@@ -574,7 +574,13 @@ input{font-family:inherit}
 .sheet .sh{background:var(--midori);color:#fff;padding:14px 16px;border-radius:18px 18px 0 0}
 .sheet .sh .j{font-size:18px;font-weight:900}
 .sheet .sh .d{font-size:15px;opacity:.9;margin-top:2px}
-.sheet .sb{padding:14px 14px 8px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;flex:1}
+/* 縦だけスクロールします。overflow-x:hidden を付けておかないと、
+   中身が1つでも横にはみ出したときシート全体が横に動いて、
+   名前が画面の外に隠れてしまいます */
+.sheet .sb{
+  padding:14px 14px 8px;display:flex;flex-direction:column;gap:14px;
+  overflow-y:auto;overflow-x:hidden;flex:1;
+}
 .sheet .sf{
   display:flex;gap:10px;padding:12px 14px calc(18px + env(safe-area-inset-bottom));
   border-top:1px solid var(--keisen);
@@ -585,7 +591,10 @@ input{font-family:inherit}
 .btn-ok{flex:1;border:none;background:var(--midori);color:#fff;font-size:18px;font-weight:900}
 .copyprev{
   min-height:48px;border-radius:10px;border:1.5px solid var(--midori);background:var(--kyo);
-  color:var(--midori);font-size:15px;font-weight:700;text-align:left;padding:0 14px;
+  color:var(--midori);font-size:15px;font-weight:700;text-align:left;padding:8px 14px;
+  /* チップと同じ理由で、折り返しを許します(中に工事名や名前が並びます) */
+  max-width:100%;white-space:normal;line-height:1.4;
+  word-break:break-all;overflow-wrap:anywhere;
 }
 .copyprev:disabled{border-color:var(--keisen);background:#f4f1e9;color:#b9b3a2;cursor:default}
 .copyprev span{font-size:13px;font-weight:600;color:var(--usu2)}
@@ -627,9 +636,16 @@ input{font-family:inherit}
 .chip.on .sc{color:#bdf0d2}
 
 .chips{display:flex;flex-wrap:wrap;gap:10px}
+/* 長い名前(「山口(○○興業)」のような応援の人)でも折り返せるようにします。
+   button は何も指定しないと折り返さず(white-space:nowrap)、
+   body も日本語の途中で切らない(word-break:keep-all)ので、両方ここで外します。
+   overflow-wrap:anywhere まで付けるのは、これを付けないと
+   「いちばん狭くできる幅」が縮まらず、枠からはみ出したままになるためです */
 .chip{
-  min-height:44px;padding:0 18px;border-radius:22px;border:1px solid var(--keisen);
+  min-height:44px;padding:6px 18px;border-radius:22px;border:1px solid var(--keisen);
   background:#fff;font-size:16px;font-weight:700;
+  max-width:100%;white-space:normal;line-height:1.35;
+  word-break:break-all;overflow-wrap:anywhere;
 }
 .chip.on{background:var(--midori);color:#fff;border-color:var(--midori)}
 .chip.coop{color:var(--kyoryoku)}
@@ -639,7 +655,9 @@ input{font-family:inherit}
 .chip.rest{background:var(--yasumi);color:var(--usu)}
 .extra-row{display:flex;gap:8px}
 .extra-row input{
-  flex:1;min-height:44px;border:1px solid var(--keisen);border-radius:10px;
+  /* min-width:0 が要ります。入力欄は既定で20文字ぶんの幅を確保しようとするため、
+     狭い画面では ＋追加 のボタンを枠の外へ押し出してしまいます */
+  flex:1;min-width:0;min-height:44px;border:1px solid var(--keisen);border-radius:10px;
   padding:0 12px;font-size:16px;background:#fff;
 }
 .extra-row button{min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--midori);background:#fff;color:var(--midori);font-size:15px;font-weight:700}
@@ -660,7 +678,9 @@ input{font-family:inherit}
 .markpop.above .arrow{bottom:-7px;border-right:1px solid var(--keisen);border-bottom:1px solid var(--keisen)}
 .markpop .in{position:relative;padding:10px 12px}
 .markpop .who{font-size:13px;font-weight:700;color:var(--usu);margin-bottom:8px}
-.markpop .row{display:flex;gap:6px}
+/* しるしのボタン5つ。狭い画面(320px)では横1列に入りきらないので折り返します。
+   吹き出しは overflow:hidden なので、折り返さないと最後の「✕」が切れて押せません */
+.markpop .row{display:flex;gap:6px;flex-wrap:wrap}
 .markpop .row button{
   min-height:48px;min-width:56px;border-radius:10px;border:1px solid var(--keisen);
   background:#fff;font-size:18px;font-weight:700;
