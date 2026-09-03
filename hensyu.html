@@ -1438,6 +1438,10 @@
       members: members,
       extras: c.extras.slice(),
       moves: [],       // よそのセルから連れてくる人 [{jobKey,dateKey,name}]
+      /* まだ確かめていない移動 { 名前: いま入っている工事キー }。
+         チップを押した時点では聞かずにここへ入れておき、
+         「きめる」でまとめて1回だけ確かめます */
+      pending: {},
       day: null        // その日の状態(チップの色を決めるのに使います)
     };
     refreshSheet();
@@ -1534,6 +1538,7 @@
 
         sh.members = {};
         sh.moves = [];             // 入れ替わるので、連れてくる予約は取り消します
+        sh.pending = {};           // 確かめ待ちも、いったん空にします
         var n = 0;
         all.forEach(function (nm) {
           if (skip[nm]) return;    // はずした人は、いまの工事に残します
@@ -1579,6 +1584,7 @@
         sh.members = c.members;
         sh.extras = c.extras;
         sh.moves = [];
+        sh.pending = {};
 
         var take = {};
         picked.forEach(function (nm) { take[nm] = true; });
@@ -1638,7 +1644,7 @@
     /* --- 🏭 工場の人 -------------------------------------------------
        その日「工場」に入っている人は、そこから抜いて別の工事に回すことが
        多いので、名簿より上にまとめて出します。
-       押したときの動き(移動の確かめ)は名簿のチップと同じです。
+       押したときの動きは名簿のチップと同じです(選ぶだけ。確かめは「きめる」)。
        ----------------------------------------------------------------- */
     var fac = factoryNames(day);
     if (fac.length) {
@@ -1650,7 +1656,7 @@
       });
       gf.appendChild(cf);
       gf.appendChild(el('div', 'ghint',
-        'タップすると、この工事へ移すか確かめます'));
+        'タップして、続けて何人でも選べます。移すかどうかは「きめる」でまとめて確かめます'));
       body.appendChild(gf);
     }
 
@@ -1670,7 +1676,7 @@
 
     var unknownN = listed.filter(function (w) { return w.unknown; }).length;
     g1.appendChild(el('div', 'ghint',
-      '灰色=その日すでに行き先がある人。タップすると移動を確かめます' +
+      '灰色=その日すでに行き先がある人。タップして選び、「きめる」でまとめて移動を確かめます' +
       (unknownN ? '<br><b style="color:var(--ki)">オレンジの破線=名簿にない人(' +
         unknownN + '名)。同じ名前で登録するとつながります</b>' : '')));
 
@@ -1720,7 +1726,7 @@
       '<button class="btn-ok">きめる</button>');
     f.querySelector('.btn-clear').addEventListener('click', function () {
       // 連れてくる予約も一緒に取り消します(元のセルを触らないため)
-      sh.members = {}; sh.extras = []; sh.moves = [];
+      sh.members = {}; sh.extras = []; sh.moves = []; sh.pending = {};
       refreshSheet();
     });
     f.querySelector('.btn-cancel').addEventListener('click', closeSheet);
@@ -1841,6 +1847,7 @@
     delete sh.members[name];
     // よそのセルから連れてくる予約もしていたら、あわせて取り消します
     sh.moves = sh.moves.filter(function (mv) { return mv.name !== name; });
+    delete sh.pending[name];
     restyleChips(name);
     updateCount();
   }
@@ -1911,14 +1918,10 @@
       } else if (st === 'free') {
         sh.members[name] = { mark: '', ord: YY.nextOrd(sh.members) };
       } else {
-        var from = (st === 'rest') ? YY.REST_KEY : st.slice(3);
-        // 行き先はチップに出していないので、ここではっきり伝えます
-        var msg = (st === 'rest')
-          ? name + ' さんはこの日「休み」です。\n「' + YY.jobLabel(sh.jobKey).name + '」に入れますか?'
-          : name + ' さんはこの日「' + YY.jobLabel(from).name + '」に入っています。\n' +
-            '「' + YY.jobLabel(sh.jobKey).name + '」に移動しますか?';
-        if (!confirm(msg)) return;
-        sh.moves.push({ jobKey: from, dateKey: sh.dateKey, name: name });
+        /* 行き先がある人。ここでは聞かずに、選んだ状態にするだけです。
+           何人でも続けて選べるようにするためで、どこから移すかは
+           pending に控えておき、「きめる」でまとめて1回だけ確かめます */
+        sh.pending[name] = (st === 'rest') ? YY.REST_KEY : st.slice(3);
         sh.members[name] = { mark: '', ord: YY.nextOrd(sh.members) };
       }
 
@@ -1996,6 +1999,7 @@
     off.addEventListener('click', function () {
       delete sh.members[name];
       sh.moves = sh.moves.filter(function (m) { return m.name !== name; });
+      delete sh.pending[name];
       restyleChips(name);
       closeMarkPop();
       updateCount();
@@ -2058,7 +2062,13 @@
     var box = $('sheet');
     var n = Object.keys(sh.members).length + sh.extras.length;
     var el1 = box.querySelector('#nowSel');
-    if (el1) el1.innerHTML = 'いま選んでいるのは <b>' + n + '名</b>';
+    if (el1) {
+      // ほかの工事・休みから移すことになる人は、押す前に数で分かるようにします
+      var mv = Object.keys(sh.pending).filter(function (nm) { return sh.members[nm]; }).length;
+      el1.innerHTML = 'いま選んでいるのは <b>' + n + '名</b>' +
+        (mv ? '<br><span style="font-size:13px;color:var(--ki)">うち ' + mv +
+              '名は、ほかの工事や休みから移します(「きめる」で確かめます)</span>' : '');
+    }
 
     var free = 0, placed = 0, rest = 0;
     YY.selectableWorkers(sh.members).forEach(function (w) {
@@ -2074,11 +2084,55 @@
     }
   }
 
-  /** 「きめる」。このセルと、連れてきた元のセルだけを書きます */
+  /**
+   * 「きめる」。このセルと、連れてきた元のセルだけを書きます。
+   * ほかの工事や休みから連れてくる人がいれば、書く前にまとめて1回だけ確かめます。
+   */
   function commitSheet() {
     var sh = S.sheet; if (!sh) return;
     if (!S.online) { toast('電波が届いていません'); return; }
+    // 確かめの画面を出しているあいだに、もう一度押されても二重に書きません
+    if (sh.saving) return;
+    sh.saving = true;
 
+    /* まだ確かめていない移動を集めます。
+       ・いま選んでいる人だけ(あとで外した人は対象外)
+       ・すでに sh.moves に入っている人は、コピーのときに確かめ済み
+       並びは、上の欄と同じ「選んだ順」にそろえます */
+    var already = {};
+    sh.moves.forEach(function (mv) { already[mv.name] = true; });
+    var ask = Object.keys(sh.pending).filter(function (nm) {
+      return sh.members[nm] && !already[nm];
+    }).sort(function (a, b) {
+      return (sh.members[a].ord || 0) - (sh.members[b].ord || 0);
+    }).map(function (nm) {
+      return { name: nm, from: sh.pending[nm] };
+    });
+
+    askMove(ask, sh.jobKey).then(function (picked) {
+      sh.saving = false;
+      if (S.sheet !== sh) return;            // 選んでいる間に閉じられたとき
+      var take = {};
+      picked.forEach(function (nm) { take[nm] = true; });
+
+      ask.forEach(function (x) {
+        if (take[x.name]) {
+          sh.moves.push({ jobKey: x.from, dateKey: sh.dateKey, name: x.name });
+        } else {
+          // はずした人は、いまの工事に残します(このセルには入れません)
+          delete sh.members[x.name];
+        }
+      });
+      sh.pending = {};
+      writeSheet(sh, ask.length - picked.length);
+    });
+  }
+
+  /**
+   * 実際の書き込み。stay は「いまの工事に残した人数」で、お知らせに出すだけです。
+   * ここへ来る時点で、移動する人は sh.moves に入っています。
+   */
+  function writeSheet(sh, stay) {
     var jobs = [];
 
     // 元のセルから外す
@@ -2104,8 +2158,11 @@
     }));
 
     closeSheet();
-    Promise.all(jobs).then(function () { toast('保存しました'); })
-      .catch(function (e) { toast('保存できませんでした:' + (e && e.message ? e.message : '')); });
+    Promise.all(jobs).then(function () {
+      toast('保存しました' + (stay ? '(' + stay + '名は、いまの工事に残しました)' : ''));
+    }).catch(function (e) {
+      toast('保存できませんでした:' + (e && e.message ? e.message : ''));
+    });
   }
 
   /* =================================================================
