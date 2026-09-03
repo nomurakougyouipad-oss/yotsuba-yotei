@@ -706,6 +706,28 @@ input{font-family:inherit}
 .nowsel{font-size:15px;font-weight:700;color:var(--midori);text-align:center;background:var(--kyo);border-radius:8px;padding:8px}
 .nowsel b{font-size:18px;font-weight:900}
 
+/* --- 説明文・見出しの折り返し ------------------------------------------
+   body に word-break:keep-all を入れているので、日本語は句読点でしか
+   折り返せません。文の中に工事名や名前が入る説明文は、それだと
+   1行が枠より長くなり、はみ出したぶんが切れて読めなくなります。
+   (シートは overflow-x:hidden、吹き出しは overflow:hidden のため、
+    横にずらして読むこともできません)
+   そこで、文字を出す部品だけ日本語の途中でも折り返せるようにします。
+   overflow-wrap:anywhere も要ります。これが無いと
+   「いちばん狭くできる幅」が縮まらず、折り返しても枠に収まりません。
+   ---------------------------------------------------------------------- */
+.sheet .sh .j,.sheet .sh .d,
+.grp .gt,.grp .gt .sum,.grp .ghint,.grp.chosen .gt .hint4,.nowsel,
+.pastpop .ph .t2,.pastpop .ph .s2,
+.pastpop .prow .jn2,.pastpop .prow .sub3,.pastpop .prow .tag2,.pastpop .none2,
+.markpop .who,.markpop .hint2,.markpop .off{
+  word-break:break-all;overflow-wrap:anywhere;
+}
+/* 一覧の行は button なので、そのままだと折り返しません(既定は nowrap)。
+   中の「名前+説明」の欄は、flex の中で縮めるために min-width:0 が要ります */
+.pastpop .prow{white-space:normal}
+.pastpop .prow>div{min-width:0}
+
 /* ============ 設定(職長) ============ */
 /* ============ メンバー(名簿)============ */
 .setbar{padding:12px;background:#fff;border-bottom:1px solid var(--keisen);display:flex;flex-direction:column;gap:10px}
