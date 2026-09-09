@@ -59,6 +59,10 @@
      スタイル(.pastmask / .pastpop)をそのまま借りています -->
 <div class="pastmask" id="movemask"></div>
 <div class="pastpop" id="movepop"></div>
+<!-- 固定の記号とマスの記号が重なったときの確かめ。
+     ここも見た目は「前に使った工事」と同じスタイルを借りています -->
+<div class="pastmask" id="markwarnmask"></div>
+<div class="pastpop" id="markwarnpop"></div>
 <div class="daymask" id="daymask"></div>
 <div class="daypop" id="daypop"></div>
 <div class="toast" id="toast"></div>
@@ -1771,7 +1775,8 @@
 
     var c = el('div', 'chips', '');
     names.forEach(function (name) {
-      var mk = sh.members[name].mark || '';
+      // 実際に出るしるし(固定のしるしも含めて)を出します
+      var mk = YY.effectiveMark(name, sh.members[name].mark || '');
       var b = document.createElement('button');
       b.className = 'chip on' + (YY.isCoop(name) ? ' coop' : '') +
         (YY.isKnown(name) ? '' : ' unknown');
@@ -1879,7 +1884,7 @@
        上の「選んでいる人」の欄で分かります。
        こうすると選んでも幅が変わらないので、名簿の折り返しがずれません */
     if (st === 'on') {
-      var mk = sh.members[name].mark || '';
+      var mk = YY.effectiveMark(name, sh.members[name].mark || '');
       b.className = 'chip on' + coop;
       b.innerHTML = (mk ? '<span class="sc">' + esc(mk) + '</span>' : '') + esc(name);
       b.title = '';
@@ -1937,6 +1942,52 @@
      固定の場所ではないので、画面外で気づかない、ということが起きません。
      ------------------------------------------------------------------- */
 
+  /**
+   * 固定のしるしが付いている人に、マスのしるしを付けようとしたときの確かめ。
+   *   戻り値 … Promise。'cell'=マスのしるしを出す / 'fixed'=固定のままにする
+   *            null=やめる
+   * どちらを出すかは、マスのしるしを入れるか消すかで表せるので、
+   * 覚えておく項目は増やしていません。
+   */
+  function askFixedMark(name, fixedMark, cellMark) {
+    return new Promise(function (done) {
+      var pop = $('markwarnpop'), mask = $('markwarnmask');
+
+      function close(pick) {
+        pop.classList.remove('on');
+        mask.classList.remove('on');
+        pop.innerHTML = '';
+        mask.onclick = null;
+        done(pick);
+      }
+
+      var h = ['<div class="ph"><div class="t2">⚠ 固定の記号が付いています</div>' +
+        '<div class="s2">' + esc(name) + ' さんには、固定で ' + esc(fixedMark) +
+        ' が付いています。このマスでは、どちらを名前の前に出しますか?</div></div>'];
+
+      h.push('<div class="pb">' +
+        '<button class="prow" id="mwCell">' +
+        '<div><div class="jn2">マスの ' + esc(cellMark) + ' を出す</div>' +
+        '<div class="sub3">このマス(工事×日)だけ ' + esc(cellMark) + ' になります。' +
+        'ほかの工事では、これまでどおり ' + esc(fixedMark) + ' が出ます</div></div></button>' +
+        '<button class="prow" id="mwFixed">' +
+        '<div><div class="jn2">固定の ' + esc(fixedMark) + ' のままにする</div>' +
+        '<div class="sub3">マスの記号は付けません</div></div></button>' +
+        '</div>');
+
+      h.push('<div class="pf"><button id="mwCancel">やめる</button></div>');
+      pop.innerHTML = h.join('');
+
+      $('mwCell').addEventListener('click', function () { close('cell'); });
+      $('mwFixed').addEventListener('click', function () { close('fixed'); });
+      $('mwCancel').addEventListener('click', function () { close(null); });
+      mask.onclick = function () { close(null); };   // 外を押したら、何も変えません
+
+      mask.classList.add('on');
+      pop.classList.add('on');
+    });
+  }
+
   function openMarkPop(chip, name) {
     var sh = S.sheet; if (!sh || !sh.members[name]) return;
     var unknown = !YY.isKnown(name);
@@ -1945,8 +1996,38 @@
     pop.innerHTML = '';
     pop.appendChild(el('div', 'arrow', ''));
 
+    var fixed = YY.memberMark(name);       // その人の固定のしるし('' なら無し)
+
+    /** しるしを決める道は、ここ1本にまとめます */
+    function applyMark(mk) {
+      sh.members[name].mark = mk;
+      restyleChips(name);
+      closeMarkPop();
+      updateCount();
+    }
+    function setMark(mk) {
+      // 固定のしるしと違うものを付けようとしたときだけ、確かめます
+      if (fixed && mk && mk !== fixed) {
+        askFixedMark(name, fixed, mk).then(function (pick) {
+          if (!pick) return;                          // やめる = 何も変えません
+          applyMark(pick === 'cell' ? mk : '');       // 固定に戻すときはマスを空に
+        });
+        return;
+      }
+      applyMark(mk);
+    }
+
     var inr = el('div', 'in', '');
     inr.appendChild(el('div', 'who', esc(name) + ' に付けるしるし'));
+
+    /* 固定のしるしが付いている人は、先に伝えます。
+       「なし」を押しても固定のしるしは残るので、そこも書いておきます */
+    if (fixed) {
+      inr.appendChild(el('div', 'fixnote',
+        '⚠ この人には固定で <span class="sc">' + esc(fixed) + '</span> が付いています。' +
+        'マスのしるしを付けると、このマスだけそちらが出ます。' +
+        '「なし」にすると <span class="sc">' + esc(fixed) + '</span> に戻ります'));
+    }
 
     var row = el('div', 'row', '');
     YY.MARKS.forEach(function (mk) {
@@ -1954,12 +2035,7 @@
       b.textContent = mk === '' ? 'なし' : mk;
       b.className = (cur === mk ? 'on' : '') + (mk === '' ? ' none' : '');
       if (mk === YY.FOREMAN_MARK) b.title = 'このマスの職長';
-      b.addEventListener('click', function () {
-        sh.members[name].mark = mk;
-        restyleChips(name);
-        closeMarkPop();
-        updateCount();
-      });
+      b.addEventListener('click', function () { setMark(mk); });
       row.appendChild(b);
     });
     inr.appendChild(row);
@@ -1972,12 +2048,7 @@
     fi.placeholder = '例:AM・PM・採寸';
     fi.value = (YY.MARKS.indexOf(cur) >= 0) ? '' : cur;   // ボタンに無いしるしなら出しておきます
     fi.addEventListener('click', function (e) { e.stopPropagation(); });
-    var apply = function () {
-      sh.members[name].mark = YY.cleanMark(fi.value);
-      restyleChips(name);
-      closeMarkPop();
-      updateCount();
-    };
+    var apply = function () { setMark(YY.cleanMark(fi.value)); };
     fi.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') { e.preventDefault(); apply(); }
       if (e.key === 'Escape') { e.preventDefault(); closeMarkPop(); }
@@ -2278,14 +2349,14 @@
 
   /** その日その人に付いているしるし(重複カードで◎を出すため) */
   function markOf(day, name) {
-    var assign = S.week.assign || {};
     var found = '';
     (day.placements[name] || []).forEach(function (jobKey) {
       var c = YY.cellOf(S.week, jobKey, day.date);
       var m = (c.members[name] || {}).mark || '';
       if (m && !found) found = m;
     });
-    return found;
+    // どのマスにも無ければ、その人の固定のしるしを出します
+    return found || YY.memberMark(name);
   }
 
   function renderLine(b) {
@@ -2433,7 +2504,8 @@
         r.className = 'wrow' + (w.active ? '' : ' off');
         r.setAttribute('data-member', w.id);
         r.innerHTML = '<div class="ord">' + (ws.indexOf(w) + 1) + '</div><div>' +
-          '<div class="nm2' + (w.coop ? ' coop' : '') + '">' + esc(w.name) + '</div>' +
+          '<div class="nm2' + (w.coop ? ' coop' : '') + '">' +
+          (w.mark ? '<span class="sc">' + esc(w.mark) + '</span>' : '') + esc(w.name) + '</div>' +
           '<div class="sub">' + esc(w.kubun) + (w.shozoku ? '・' + esc(w.shozoku) : '') + '</div>' +
           '</div>' + (w.active ? '' : '<div class="tag">隠し中</div>');
         r.addEventListener('click', function (e) {
@@ -2562,6 +2634,59 @@
     f3.appendChild(inSho);
     inr.appendChild(f3);
 
+    /* --- 固定のしるし -------------------------------------------------
+       付けると、その人がどの工事に入っても名前の前に出ます。
+       マスのしるしを付けたときは、そちらが優先されます。
+       ----------------------------------------------------------------- */
+    var mark = isNew ? '' : (w.mark || '');
+    var f4 = el('div', 'fld', '<div class="lb">記号<small>(任意)</small></div>');
+    var mbox = el('div', 'cats2', '');
+    var mFree = document.createElement('input');
+    YY.MARKS.forEach(function (mk) {
+      var bb = document.createElement('button');
+      bb.textContent = (mk === '') ? 'なし' : mk;
+      bb.setAttribute('data-mark', mk);
+      bb.addEventListener('click', function () {
+        mark = mk;
+        mFree.value = '';
+        syncMark();
+      });
+      mbox.appendChild(bb);
+    });
+    f4.appendChild(mbox);
+    inr.appendChild(f4);
+
+    var f5 = el('div', 'fld', '<div class="lb">その他</div>');
+    mFree.type = 'text';
+    mFree.className = 'sub';
+    mFree.maxLength = YY.MARK_MAX;
+    mFree.placeholder = '例:AM・採寸(' + YY.MARK_MAX + '文字まで)';
+    mFree.addEventListener('input', function () {
+      mark = YY.cleanMark(mFree.value);
+      syncMark(true);                      // 打っている間は入力欄を書き替えません
+    });
+    f5.appendChild(mFree);
+    inr.appendChild(f5);
+    inr.appendChild(el('div', 'fld',
+      '<div class="lb"></div><div class="note" id="memMarkNote"></div>'));
+
+    /** ボタンの選択状態と、下の説明を、いまの記号に合わせます */
+    function syncMark(typing) {
+      Array.prototype.forEach.call(mbox.children, function (x) {
+        x.className = (x.getAttribute('data-mark') === mark) ? 'on' : '';
+      });
+      // ボタンに無いしるしは、入力欄のほうに出しておきます
+      if (!typing && YY.MARKS.indexOf(mark) < 0) mFree.value = mark;
+      var note = inr.querySelector('#memMarkNote');
+      if (note) {
+        note.innerHTML = mark
+          ? 'どの工事に入っても <span class="sc">' + esc(mark) + '</span> が名前の前に出ます' +
+            (mark === YY.FOREMAN_MARK ? '(◎ なので、どのマスでも先頭に並びます)' : '')
+          : '付けると、どの工事に入っても同じ記号が名前の前に出ます';
+      }
+    }
+    syncMark();
+
     if (!isNew) {
       inr.appendChild(el('hr', '', ''));
       var idx = YY.master.workers.indexOf(w);
@@ -2618,17 +2743,17 @@
       var sho = (inSho.value || '').trim();
       closeJobPop();
       if (isNew) {
-        YY.addMember(nm, kubun, sho).then(function () {
+        YY.addMember(nm, kubun, sho, mark).then(function () {
           toast('「' + nm + '」を追加しました');
         }).catch(function (e) { toast('追加できませんでした:' + e.message); });
       } else {
-        YY.updateMember(memberId, { name: nm, kubun: kubun, shozoku: sho }).then(function () {
+        YY.updateMember(memberId, { name: nm, kubun: kubun, shozoku: sho, mark: mark }).then(function () {
           toast('直しました');
         }).catch(function (e) { toast('直せませんでした:' + e.message); });
       }
     }
 
-    [inName, inSho].forEach(function (x) {
+    [inName, inSho, mFree].forEach(function (x) {
       x.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') { e.preventDefault(); submit(); }
         if (e.key === 'Escape') { e.preventDefault(); closeJobPop(); }

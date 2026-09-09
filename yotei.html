@@ -436,7 +436,8 @@
     var jobs = where.filter(function (k) { return k !== YY.REST_KEY; }).map(function (k) {
       var lab = YY.jobLabel(k);
       var c = YY.cellOf(S.week, k, dateKey);
-      return { id: k, name: lab.name, no: lab.sub, mark: (c.members[S.me] || {}).mark || '' };
+      return { id: k, name: lab.name, no: lab.sub,
+               mark: YY.effectiveMark(S.me, (c.members[S.me] || {}).mark || '') };
     });
     return { rest: rest, jobs: jobs };
   }

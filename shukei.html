@@ -301,6 +301,10 @@ td.jn:hover .n{text-decoration:underline}
     YY.init();
     // 工事名を出すために名簿(工事)を読みます
     YY.subscribeJobs(function () { if (S.data) draw(); });
+    /* 名簿(人)も読みます。しるしの出し方を予定表・LINE・確認用アプリと
+       そろえるために要ります(固定のしるしは名簿に入っているため)。
+       協力会社の人を青文字にするのにも、これが要ります */
+    YY.subscribeMembers(function () { if (S.data) draw(); });
 
     $('prev').addEventListener('click', function () { shift(-1); });
     $('next').addEventListener('click', function () { shift(1); });

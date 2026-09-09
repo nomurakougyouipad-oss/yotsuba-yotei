@@ -30,7 +30,7 @@
 
   /* --- メンバー(名簿)-------------------------------------------------
      日報アプリとはつながっていません。このアプリで登録・管理します。
-        yotei/members/{id} : { id, name, kubun, shozoku, order, active }
+        yotei/members/{id} : { id, name, kubun, shozoku, mark, order, active }
      kubun は「自社」か「協力」の2つだけ(協力なら青文字で出します)。
      予定データは【名前】で持っているので、同じ名前で登録すればつながります。
      ------------------------------------------------------------------- */
@@ -240,7 +240,7 @@
 
   var master = {
     // メンバー(名簿)。yotei/members から入れます
-    workers: [],        // [{id,name,kubun,shozoku,order,active,coop}] order 順
+    workers: [],        // [{id,name,kubun,shozoku,mark,order,active,coop}] order 順
     workerByName: {},
     membersLoaded: false,
 
@@ -271,6 +271,7 @@
         name: String(m.name),
         kubun: kubun,
         shozoku: m.shozoku ? String(m.shozoku) : '',
+        mark: cleanMark(m.mark),        // 固定のしるし('' なら無し)
         order: (typeof m.order === 'number') ? m.order : 0,
         active: m.active !== false,
         coop: kubun === '協力'
@@ -329,7 +330,7 @@
   }
 
   /** メンバーを1人足します。名前だけあれば登録できます */
-  function addMember(name, kubun, shozoku) {
+  function addMember(name, kubun, shozoku, mark) {
     initFirebase();
     var nm = cleanMemberName(name);
     if (!nm) return Promise.reject(new Error('名前を入れてください'));
@@ -340,6 +341,7 @@
       name: nm,
       kubun: cleanKubun(kubun),
       shozoku: cleanShozoku(shozoku),
+      mark: cleanMark(mark),
       order: nextMemberOrder(),
       active: true
     }).then(function () { return id; });
@@ -398,6 +400,7 @@
     }
     if (patch.kubun != null) up.kubun = cleanKubun(patch.kubun);
     if (patch.shozoku != null) up.shozoku = cleanShozoku(patch.shozoku);
+    if (patch.mark != null) up.mark = cleanMark(patch.mark);
     if (patch.active != null) up.active = !!patch.active;
     if (!Object.keys(up).length) return Promise.resolve();
     return yoteiDb.ref(MEMBERS_PATH + '/' + memberId).update(up);
@@ -489,6 +492,26 @@
 
   /** 名簿にいる人かどうか(予定にだけ残っている名前を見分けます) */
   function isKnown(name) { return !!master.workerByName[name]; }
+
+  /* --- しるしの決まり --------------------------------------------------
+     しるしは2か所にあります。
+       固定のしるし … yotei/members/{id}.mark。その人にいつも付きます
+       マスのしるし … その工事・その日だけのもの
+     出すのは【マスのしるしがあればそちら。無ければ固定のしるし】の1本です。
+     こうすると「どちらを出すか」を覚えておく項目が要らず、
+     選び直しも「マスのしるしを入れる / 消す」で表せます。
+     ------------------------------------------------------------------- */
+
+  /** その人の固定のしるし(名簿にいない人は '') */
+  function memberMark(name) {
+    var w = master.workerByName[name];
+    return (w && w.mark) ? w.mark : '';
+  }
+
+  /** 実際に出すしるし。表示するときは必ずこれを通してください */
+  function effectiveMark(name, cellMark) {
+    return cellMark ? cellMark : memberMark(name);
+  }
 
   /**
    * カテゴリ番号 → その工事一覧(order 順)。
@@ -827,18 +850,23 @@
    *
    * 選んだ順は members[名前].ord(数値)で持っています。
    * ord が無い古いデータは、いまの並びのまま後ろに続けます。
+   *
+   * しるしは effectiveMark で決めます(マス優先・無ければ固定)。
+   * 表示するところは、セルも LINE も確認用アプリも集計も
+   * すべてここを通るので、しるしの出方はここ1か所でそろいます。
    */
   function displayMembers(members) {
     members = members || {};
     var names = Object.keys(members);
     var rows = names.map(function (name, i) {
       var m = members[name] || {};
-      var mark = m.mark || '';
+      var mark = effectiveMark(name, m.mark || '');
       return {
         name: name,
         mark: mark,
+        fixed: !(m.mark) && !!mark,     // 固定のしるしで出している
         ord: (typeof m.ord === 'number') ? m.ord : (100000 + i),
-        foreman: isForemanMark(mark),   // そのマスだけの職長
+        foreman: isForemanMark(mark),   // ◎ は固定でも職長として先頭に出します
         coop: isCoop(name)
       };
     });
@@ -1670,6 +1698,8 @@
     MARKS: MARKS,
     MARK_MAX: MARK_MAX,
     cleanMark: cleanMark,
+    memberMark: memberMark,
+    effectiveMark: effectiveMark,
     cellItems: cellItems,
     DOW: DOW,
 

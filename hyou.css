@@ -688,6 +688,12 @@ input{font-family:inherit}
 .markpop .row button.on{background:var(--midori);color:#fff;border-color:var(--midori);font-weight:900}
 .markpop .row button.none{font-size:14px}
 .markpop .hint2{font-size:11px;color:var(--usu);margin-top:6px;line-height:1.6}
+/* 固定のしるしが付いている人へのお知らせ。ボタンの上に出します */
+.markpop .fixnote{
+  font-size:12px;line-height:1.6;color:#8a6516;background:var(--kiji);
+  border:1px solid var(--kiwaku);border-radius:8px;padding:6px 8px;margin-bottom:8px;
+  word-break:break-all;overflow-wrap:anywhere;
+}
 /* その他:自由に打てるしるし */
 .markpop .freemark{display:flex;align-items:center;gap:6px;margin-top:8px}
 .markpop .freemark .lb3{font-size:12px;font-weight:700;color:var(--usu2);flex-shrink:0}
@@ -720,9 +726,13 @@ input{font-family:inherit}
 .grp .gt,.grp .gt .sum,.grp .ghint,.grp.chosen .gt .hint4,.nowsel,
 .pastpop .ph .t2,.pastpop .ph .s2,
 .pastpop .prow .jn2,.pastpop .prow .sub3,.pastpop .prow .tag2,.pastpop .none2,
-.markpop .who,.markpop .hint2,.markpop .off{
+.markpop .who,.markpop .hint2,.markpop .off,.markpop .fixnote,
+.jobpop .ttl,.jobpop .lb,.jobpop .note,.jobpop .err{
   word-break:break-all;overflow-wrap:anywhere;
 }
+/* 吹き出しの説明は、ラベルの右の列に入ります。
+   grid の中では min-width:0 が無いと列より狭くなれず、はみ出します */
+.jobpop .fld>*{min-width:0}
 /* 一覧の行は button なので、そのままだと折り返しません(既定は nowrap)。
    中の「名前+説明」の欄は、flex の中で縮めるために min-width:0 が要ります */
 .pastpop .prow{white-space:normal}
