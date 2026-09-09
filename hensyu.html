@@ -2505,8 +2505,9 @@
         r.setAttribute('data-member', w.id);
         r.innerHTML = '<div class="ord">' + (ws.indexOf(w) + 1) + '</div><div>' +
           '<div class="nm2' + (w.coop ? ' coop' : '') + '">' +
-          (w.mark ? '<span class="sc">' + esc(w.mark) + '</span>' : '') + esc(w.name) + '</div>' +
-          '<div class="sub">' + esc(w.kubun) + (w.shozoku ? '・' + esc(w.shozoku) : '') + '</div>' +
+          (w.mark ? '<span class="fixmk">' + esc(w.mark) + '</span>' : '') + esc(w.name) + '</div>' +
+          '<div class="sub">' + esc(w.kubun) + (w.shozoku ? '・' + esc(w.shozoku) : '') +
+          (w.mark ? '<span class="mksub">固定の記号 ' + esc(w.mark) + '</span>' : '') + '</div>' +
           '</div>' + (w.active ? '' : '<div class="tag">隠し中</div>');
         r.addEventListener('click', function (e) {
           e.stopPropagation();
@@ -2745,11 +2746,11 @@
       if (isNew) {
         YY.addMember(nm, kubun, sho, mark).then(function () {
           toast('「' + nm + '」を追加しました');
-        }).catch(function (e) { toast('追加できませんでした:' + e.message); });
+        }).catch(function (e) { toast(memberSaveError(e, mark, '追加できませんでした')); });
       } else {
         YY.updateMember(memberId, { name: nm, kubun: kubun, shozoku: sho, mark: mark }).then(function () {
           toast('直しました');
-        }).catch(function (e) { toast('直せませんでした:' + e.message); });
+        }).catch(function (e) { toast(memberSaveError(e, mark, '直せませんでした')); });
       }
     }
 
@@ -2766,6 +2767,20 @@
     positionJobPop();
     inName.focus();
     inName.setSelectionRange(inName.value.length, inName.value.length);
+  }
+
+  /**
+   * メンバーを保存できなかったときの言い方。
+   * 記号(mark)は Firebase の決まり(rules)に足していないと弾かれます。
+   * そのときは「電波が悪い」ではなく、何をすればよいかを出します。
+   */
+  function memberSaveError(e, mark, verb) {
+    var msg = (e && e.message) ? String(e.message) : '';
+    if (mark && /permission|denied/i.test(msg)) {
+      return '記号を保存できませんでした。Firebase の決まり(rules)に ' +
+             'members の mark を足してください(rules.json)';
+    }
+    return verb + ':' + msg;
   }
 
   function doMoveMember(memberId, dir) {

@@ -756,6 +756,14 @@ input{font-family:inherit}
 .wrow .nm2{font-size:18px;font-weight:700}
 .wrow .nm2.coop{color:var(--kyoryoku)}
 .wrow .sub{font-size:12px;color:var(--usu);margin-top:2px}
+/* 固定の記号。名簿の一覧で、誰に何が付いているか一目で分かるようにします */
+.wrow .fixmk{
+  display:inline-block;min-width:24px;padding:1px 6px;margin-right:7px;
+  border-radius:7px;border:1.5px solid var(--shokucho);background:#eaf7ef;
+  color:var(--shokucho);font-size:15px;font-weight:900;line-height:1.5;
+  text-align:center;vertical-align:1px;
+}
+.wrow .mksub{margin-left:6px;color:var(--shokucho);font-weight:700}
 .wrow .ord{
   font-size:11px;color:#c2bcab;font-weight:700;width:26px;flex-shrink:0;text-align:right;
 }
