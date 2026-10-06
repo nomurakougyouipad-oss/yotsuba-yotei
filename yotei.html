@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#1c4b34">
 <title>よつば週間予定</title>
+<!-- ホーム画面に追加したときの設定。iPhone はホーム画面から開いたときだけ通知が届くので、
+     ファイルとして置いた manifest と PNG のアイコンを使います(車両管理アプリと同じ) -->
+<link rel="manifest" href="yotei.webmanifest">
+<link rel="apple-touch-icon" href="icons/yotei-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="よつば予定">
 
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;600;700;900&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -95,6 +102,19 @@
 .pick .none{padding:30px 10px;text-align:center;color:var(--usu);font-size:15px}
 
 
+/* ---- 通知(車両管理アプリと同じ見た目)---- */
+.pushbar{padding:12px 12px 0}
+.pushbtn{
+  display:block;width:100%;min-height:52px;margin:0;border:2px solid var(--midori);border-radius:14px;
+  background:#fff;color:var(--midori);font-size:17px;font-weight:900;
+}
+.pushbtn:disabled{opacity:.6}
+.pushnote{
+  margin:8px 0 0;color:var(--usu);font-size:14px;text-align:center;line-height:1.6;
+  word-break:break-all;overflow-wrap:anywhere;     /* body は keep-all なので、途中でも折り返せるように */
+}
+.pushnote a{color:var(--midori);font-weight:700}
+
 /* ---- 大きい画面では中央に寄せます ---- */
 @media (min-width:700px){
   .pick .list{grid-template-columns:repeat(3,1fr)}
@@ -115,6 +135,7 @@
 
   /* ノッチよけ */
   .mebar{padding-left:calc(14px + var(--sal));padding-right:calc(14px + var(--sar))}
+  .pushbar{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
   .days{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
   .pick{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
 }
@@ -140,6 +161,7 @@
     <button data-tab="plan"><div class="i">📅</div><div class="l">予定表</div></button>
   </div>
 </div>
+<div class="toast" id="toast"></div>
 
 <script src="common.js"></script>
 <script>
@@ -148,6 +170,7 @@
    ★ このファイルには予定を書きこむコードがありません。
       common.js の saveCell / addJob / addMember などは一切呼びません。
       読むのは subscribeWeek / subscribeJobs / subscribeMembers だけです。
+      書くのは、通知を許可した端末の控え(yotei/notify/tokens)だけです。
    ===================================================================== */
 (function () {
   'use strict';
@@ -173,7 +196,10 @@
     nearBase: null,
     nearWeeks: {},      // 直近4週ぶん(最後に人が入った日を調べます)
     nearLoaded: false,
-    unsubWeek: null
+    unsubWeek: null,
+    notifyOn: false,    // 事務所がこの人の通知をオンにしているか
+    unsubNotify: null,
+    pushBusy: false     // 「通知を許可する」を押して、保存しているあいだ
   };
 
   var $ = function (id) { return document.getElementById(id); };
@@ -194,28 +220,34 @@
      起動
      ================================================================= */
   function boot() {
-    // ホーム画面のアイコン(編集用と見分けられるよう、生成り地のほう)
-    var icon = YY.iconDataUri(180, true);
-    var l1 = document.createElement('link');
-    l1.rel = 'apple-touch-icon'; l1.href = icon;
-    document.head.appendChild(l1);
+    // タブのアイコン(編集用と見分けられるよう、生成り地のほう)。
+    // ホーム画面のアイコンと manifest は、ファイルとして <head> に書いてあります
     var l2 = document.createElement('link');
     l2.rel = 'icon'; l2.href = YY.iconDataUri(64, true);
     document.head.appendChild(l2);
-    var mf = {
-      name: 'よつば週間予定', short_name: 'よつば予定',
-      display: 'standalone', background_color: '#f5f1e8', theme_color: '#1c4b34',
-      icons: [{ src: icon, sizes: '180x180', type: 'image/svg+xml' }]
-    };
-    var l3 = document.createElement('link');
-    l3.rel = 'manifest';
-    l3.href = URL.createObjectURL(new Blob([JSON.stringify(mf)], { type: 'application/json' }));
-    document.head.appendChild(l3);
 
     YY.init();
     S.fold = getFold();          // 前に閉じたときの状態を思い出します
 
     try { S.me = localStorage.getItem(ME_KEY) || null; } catch (e) { S.me = null; }
+
+    // 通知を押して開いたときは、変わった日の週を出します(yotei.html?week=月曜)
+    var wk = weekFromUrl();
+    if (wk) S.monday = wk;
+    // すでに開いていた画面で通知を押したときは、sw.js から週が届きます
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', function (e) {
+        var d = e.data || {};
+        if (d.type === 'openWeek' && /^\d{4}-\d{2}-\d{2}$/.test(d.week || '')) openWeek(d.week);
+      });
+    }
+    // 端末の設定で通知を許可して戻ってきたときに、案内を出し直します
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden && S.tab === 'me') render();
+    });
+    watchNotify();
+    // 許可ずみの端末は、開くたびにトークンを取り直して保存します(変わっていたり、無効として消されていても戻る)
+    if (S.me && pushState() === 'on') saveToken().catch(function (e) { console.warn(e); });
 
     YY.onConnection(function (on) {
       S.online = on;
@@ -416,6 +448,9 @@
           S.me = w.name;
           try { localStorage.setItem(ME_KEY, w.name); } catch (e) { }
           S.picking = false;
+          watchNotify();
+          // この端末の通知を、新しい名前にひもづけ直します
+          if (pushState() === 'on') saveToken().catch(function (e) { console.warn(e); });
           render();
         });
         list.appendChild(bt);
@@ -448,6 +483,8 @@
     var w = YY.master.workerByName[S.me];
     b.appendChild(el('div', 'mebar',
       '<div class="nm' + (w && w.coop ? ' coop' : '') + '">' + esc(S.me) + ' さん</div>'));
+    var pb = pushBar();
+    if (pb) b.appendChild(pb);
 
     var days = YY.weekDates(S.monday);
     var box = el('div', 'days', '');
@@ -899,6 +936,170 @@
       if (has) u[id] = true;
     });
     return u;
+  }
+
+  function toast(msg) {
+    var t = $('toast'); t.textContent = msg; t.classList.add('on');
+    clearTimeout(toast._t); toast._t = setTimeout(function () { t.classList.remove('on'); }, 2600);
+  }
+
+  /** yotei.html?week=2026-10-12 の週(月曜キー)。読んだら URL からは消します(読み込み直しで戻らないように) */
+  function weekFromUrl() {
+    var m = /[?&]week=(\d{4}-\d{2}-\d{2})/.exec(location.search);
+    if (!m) return null;
+    try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) { }
+    return YY.toKey(YY.mondayOf(m[1]));
+  }
+
+  /** 通知を押したとき:その週の「じぶん」を出します */
+  function openWeek(week) {
+    S.tab = 'me';
+    S.picking = false;
+    Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function (x) {
+      x.classList.toggle('on', x.getAttribute('data-tab') === 'me');
+    });
+    S.monday = YY.toKey(YY.mondayOf(week));
+    S.openMates = {};
+    S.openCells = {};
+    watchWeek();
+    render();
+  }
+
+  /* =================================================================
+     プッシュ通知(車両管理アプリと同じ仕組み)
+       ・届ける人は、事務所が編集アプリの「メンバー → 🔔 通知」で選びます(最初は全員オフ)
+       ・ここでするのは、この端末で通知を許可して「じぶん」の名前とひもづけることだけです
+       ・送るのは Cloud Functions(functions/index.js)、表示するのは sw.js です
+     ================================================================= */
+  var TOKEN_KEY = 'yotsuba-yotei-push-token';      // この端末の通知トークン
+  var MESSAGING_SDK = 'https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js';
+  var isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var inLine = / Line\//.test(navigator.userAgent);  // LINE の中のブラウザ
+
+  function isStandalone() {
+    return navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+  }
+  function lsGet(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+  function lsSet(k, v) {
+    try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) { }
+  }
+
+  /** この端末の通知の状態 */
+  function pushState() {
+    if (!YY.VAPID_KEY) return 'off';                    // まだ準備できていない(公開鍵が入っていない)
+    if (inLine) return 'line';                          // LINE の中では通知を受け取れない
+    if (isIOS && !isStandalone()) return 'ios-browser'; // iPhone はホーム画面から開いたときだけ届く
+    if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+      return 'unsupported';
+    }
+    if (Notification.permission === 'denied') return 'denied';
+    return (Notification.permission === 'granted' && lsGet(TOKEN_KEY)) ? 'on' : 'ask';
+  }
+
+  /** 事務所がこの人の通知をオンにしているかを見張ります(名前を選び直したら付け替えます) */
+  function watchNotify() {
+    if (S.unsubNotify) { S.unsubNotify(); S.unsubNotify = null; }
+    S.notifyOn = false;
+    if (!YY.VAPID_KEY || !S.me) return;
+    S.unsubNotify = YY.subscribeNotifyMe(S.me, function (on) { S.notifyOn = on; render(); });
+  }
+
+  /** 通知の部品(Firebase Cloud Messaging)は、使うときだけ読みます */
+  var messagingP = null;
+  function getMessaging() {
+    if (!messagingP) {
+      messagingP = new Promise(function (ok, ng) {
+        if (firebase.messaging) { ok(); return; }
+        var s = document.createElement('script');
+        s.src = MESSAGING_SDK;
+        s.onload = function () { ok(); };
+        s.onerror = function () { ng(new Error('通知の部品を読めません')); };
+        document.head.appendChild(s);
+      }).then(function () {
+        return Promise.resolve(firebase.messaging.isSupported());
+      }).then(function (ok) {
+        return ok ? firebase.app().messaging() : null;
+      }).catch(function (e) {
+        console.warn(e);
+        messagingP = null;         // 次に押したときに、もう一度読みます
+        return null;
+      });
+    }
+    return messagingP;
+  }
+
+  function platform() {
+    return isIOS ? 'ios' : (/Android/.test(navigator.userAgent) ? 'android' : 'pc');
+  }
+
+  /** この端末の通知トークンを取り、「じぶん」の名前とひもづけて保存します(前のトークンは片づけます) */
+  function saveToken() {
+    if (!S.me) return Promise.resolve(false);
+    return getMessaging().then(function (m) {
+      if (!m) return false;
+      return navigator.serviceWorker.register('./sw.js')
+        .then(function () { return navigator.serviceWorker.ready; })   // 動き出してからでないとトークンを取れません
+        .then(function (reg) { return m.getToken({ vapidKey: YY.VAPID_KEY, serviceWorkerRegistration: reg }); })
+        .then(function (token) {
+          if (!token) return false;
+          return YY.saveNotifyToken(token, S.me, platform(), lsGet(TOKEN_KEY)).then(function () {
+            lsSet(TOKEN_KEY, token);
+            return true;
+          });
+        });
+    });
+  }
+
+  /** 「🔔 通知を許可する」。iPhone では、押した直後に許可のダイアログを出す必要があります(先に何かを待たない) */
+  function enablePush() {
+    if (S.pushBusy) return;
+    var ask;
+    try {
+      ask = (Notification.permission === 'granted') ? 'granted' : Notification.requestPermission();
+    } catch (e) { ask = 'default'; }
+    S.pushBusy = true;
+    render();
+    Promise.resolve(ask).then(function (p) {
+      if (p !== 'granted') return 'denied';
+      return saveToken().catch(function (e) { console.error(e); return false; });
+    }).then(function (r) {
+      S.pushBusy = false;
+      if (r === 'denied') toast('通知は許可されませんでした');
+      else toast(r ? '通知をオンにしました' : '通知をオンにできませんでした。電波のよい所でもう一度押してください');
+      render();
+    });
+  }
+
+  /**
+   * 名前の下に出す案内。事務所がオンにしている人にだけ出します。
+   *   まだ許可していない → 「🔔 通知を許可する」
+   *   iPhone のブラウザで見ている → ホーム画面に追加する案内
+   */
+  function pushBar() {
+    if (!S.notifyOn) return null;
+    var st = pushState();
+    if (st === 'ask') {
+      var box = el('div', 'pushbar', '');
+      var bt = document.createElement('button');
+      bt.className = 'pushbtn';
+      bt.textContent = S.pushBusy ? '通知をオンにしています…' : '🔔 通知を許可する';
+      bt.disabled = S.pushBusy;
+      bt.addEventListener('click', enablePush);
+      box.appendChild(bt);
+      box.appendChild(el('p', 'pushnote', '予定が変わったときに、このスマホにお知らせが届きます'));
+      return box;
+    }
+    var msg = {
+      'ios-browser': 'ホーム画面に追加すると通知が届きます。<br>' +
+        'Safari の共有ボタン(□に↑)→「ホーム画面に追加」で置いたアイコンから開いてください',
+      'line': 'LINE の中では通知を受け取れません。<br>' +
+        '<a href="yotei.html?openExternalBrowser=1">' + (isIOS ? 'Safari' : 'ブラウザ') + 'で開き直す</a>' +
+        (isIOS ? 'と、ホーム画面に追加できます' : ''),
+      'denied': 'この端末では通知が止められています。端末の設定で許可してください',
+      'unsupported': 'この端末では通知を使えません'
+    }[st];
+    return msg ? el('div', 'pushbar', '<p class="pushnote">' + msg + '</p>') : null;
   }
 
   boot();

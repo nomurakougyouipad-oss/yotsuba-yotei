@@ -787,6 +787,44 @@ input{font-family:inherit}
 .bulk .btns{display:flex;gap:10px;justify-content:flex-end}
 .bulk .btns button{min-height:48px;padding:0 20px;border-radius:10px;border:1px solid var(--keisen);background:#fff;font-size:15px;font-weight:700;color:var(--usu2)}
 .bulk .btns .ok{background:var(--midori);color:#fff;border-color:var(--midori);font-weight:900}
+/* ---- メンバー → 🔔 通知(車両管理アプリの「設定 → 通知」と同じ作り)---- */
+/* 名簿 / 通知 の切り替え */
+.stabs{display:flex;gap:4px;padding:0 12px;background:#fff;border-bottom:1.5px solid var(--keisen)}
+.stabs button{
+  background:none;border:0;border-bottom:3px solid transparent;margin-bottom:-1.5px;
+  min-height:46px;padding:0 18px;font-size:15px;font-weight:700;color:var(--usu);
+}
+.stabs button.on{color:var(--midori);border-bottom-color:var(--midori)}
+/* 説明文(body は keep-all なので、日本語の途中でも折り返せるようにします) */
+.nhint{font-size:13px;color:var(--usu2);line-height:1.7;word-break:break-all;overflow-wrap:anywhere}
+.nhint.warn{color:var(--aka);font-weight:700}
+/* 人ごとのオン・オフの表 */
+/* overflow は付けません(付けると見出しの行が #body のスクロールに付いてこなくなるため) */
+.ntable-wrap{margin:12px;max-width:640px;border:1.5px solid var(--keisen);border-radius:12px;background:#fff}
+.ntable{width:100%;border-collapse:collapse;font-size:14px}
+.ntable th{
+  position:sticky;top:0;z-index:1;background:#fff;border-bottom:1.5px solid var(--keisen);
+  padding:8px 6px;font-size:14px;text-align:center;vertical-align:top;white-space:nowrap;
+}
+.ntable th:first-child{text-align:left;vertical-align:bottom;padding-left:12px}
+.ntable th small{display:block;font-weight:500;color:var(--usu);font-size:12px}
+.ntable .nall{display:flex;gap:4px;justify-content:center;margin-top:6px}
+.ntable .nall button{
+  min-height:32px;padding:0 9px;border-radius:8px;border:1.5px solid var(--keisen);
+  background:#fff;font-size:12px;font-weight:700;color:var(--usu2);
+}
+.ntable td{padding:6px;border-bottom:1px solid var(--keisen2);text-align:center}
+.ntable td.nname{text-align:left;padding-left:12px;word-break:break-all;overflow-wrap:anywhere}
+.ntable td.nname b{margin-right:8px;font-size:16px}
+.ntable td.nname b.coop{color:var(--kyoryoku)}
+.ntable input[type=checkbox]{width:24px;height:24px;margin:10px;cursor:pointer;accent-color:var(--midori)}
+.ntable tr.ngrp td{text-align:left;font-weight:900;color:var(--usu);background:var(--kinari);padding:4px 12px;font-size:13px}
+.ntable tr:last-child td{border-bottom:0}
+.pst{
+  display:inline-block;font-size:11px;color:var(--usu);border:1px solid #c9c2b0;border-radius:6px;
+  padding:1px 6px;font-weight:700;white-space:nowrap;vertical-align:2px;
+}
+.pst.ok{color:var(--midori);border-color:var(--midori)}
 /* 選択シートの「名簿を直す」 */
 .fixlink{
   margin-top:10px;font-size:13px;color:var(--midori);font-weight:700;

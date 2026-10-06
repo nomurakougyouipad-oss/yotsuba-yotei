@@ -9,6 +9,7 @@
         yotei/members  名簿   { id, name, kubun, shozoku, order, active }
         yotei/jobs     工事   { id, name, no, category, order, active }
         yotei/weeks    予定   週ごと。assign/{工事id}/{日付}/members/{名前}
+        yotei/notify   通知   届ける人(on)と、通知を許可した端末(tokens)
    ======================================================================= */
 (function (global) {
   'use strict';
@@ -97,6 +98,22 @@
     var t = String(name == null ? '' : name);
     return LINE_SKIP_PREFIXES.some(function (p) { return t.indexOf(p) === 0; });
   }
+
+  /* --- プッシュ通知 ----------------------------------------------------
+     自分の予定が変わったとき、本人のスマホに届けます。
+     送るのは Cloud Functions(functions/index.js)です。画面がすることは次の2つだけです。
+        yotei/notify/on/{名前}           : true … 届ける人(編集アプリの メンバー → 🔔 通知)。最初は全員オフ
+        yotei/notify/tokens/{通知トークン} : { name, platform, updatedAt } … 通知を許可した端末
+     VAPID_KEY が空のあいだは、確認用アプリに「通知を許可する」を出しません。
+     ------------------------------------------------------------------- */
+  var NOTIFY_PATH = 'yotei/notify';
+  // 通知の公開鍵(Firebase コンソール → プロジェクトの設定 → Cloud Messaging → ウェブプッシュ証明書 の「鍵ペア」)
+  var VAPID_KEY = 'BJCHIZ-rm90oqVyyI4PSOaPg6nU3pyha8k42XH1V-R69epd3-oFBJMrMBT-3eoVQUNiI6X77VHkiR1DisHOXroA';
+  // 今日〜何日後までの予定の変更を知らせるか。ここは説明文に出すためだけの数です。
+  // 実際に決めているのは functions/index.js の NOTIFY_DAYS なので、変えるときは両方を同じ数にしてください
+  var NOTIFY_DAYS = 10;
+  // 最後の変更から何分待ってまとめて送るか(functions/index.js の WAIT_MIN と同じ数に)
+  var NOTIFY_WAIT_MIN = 5;
 
   var OPERATOR = '事務所';                    // 名前をまだ決めていないときの既定
   var OPERATOR_KEY = 'yotsuba.yotei.operator';
@@ -1659,6 +1676,73 @@
   }
 
   /* ===================================================================
+     ■ プッシュ通知(yotei/notify)
+       届ける人を選ぶのは編集アプリ、許可するのは本人のスマホ(確認用アプリ)。
+       実際に送るのは Cloud Functions です(functions/index.js)。
+     =================================================================== */
+
+  /** 通知がオンの人 { 名前: true } を見張ります。止める関数を返します */
+  function subscribeNotifyOn(cb) {
+    initFirebase();
+    var ref = yoteiDb.ref(NOTIFY_PATH + '/on');
+    var h = ref.on('value',
+      function (s) { cb(s.val() || {}); },
+      function (e) { console.warn('[common] 通知の設定を読めません:', e); cb({}); });
+    return function () { ref.off('value', h); };
+  }
+
+  /** その人の通知がオンかどうかを見張ります(確認用アプリ)。止める関数を返します */
+  function subscribeNotifyMe(name, cb) {
+    initFirebase();
+    if (!validKey(name)) { cb(false); return function () { }; }
+    var ref = yoteiDb.ref(NOTIFY_PATH + '/on/' + name);
+    var h = ref.on('value',
+      function (s) { cb(s.val() === true); },
+      function (e) { console.warn('[common] 通知の設定を読めません:', e); cb(false); });
+    return function () { ref.off('value', h); };
+  }
+
+  /** 通知を許可した端末がある人 { 名前: true } を見張ります(編集アプリの「未許可」の表示に使います) */
+  function subscribeNotifyTokens(cb) {
+    initFirebase();
+    var ref = yoteiDb.ref(NOTIFY_PATH + '/tokens');
+    var h = ref.on('value',
+      function (s) {
+        var names = {};
+        s.forEach(function (c) { var v = c.val() || {}; if (v.name) names[v.name] = true; });
+        cb(names);
+      },
+      function (e) { console.warn('[common] 通知の端末を読めません:', e); cb({}); });
+    return function () { ref.off('value', h); };
+  }
+
+  /** 届ける人のオン・オフ。names は名前の配列。押したときにすぐ保存します */
+  function setNotifyOn(names, on) {
+    initFirebase();
+    var patch = {};
+    (names || []).forEach(function (n) { if (validKey(n)) patch[n] = on ? true : null; });
+    if (!Object.keys(patch).length) return Promise.resolve();
+    return yoteiDb.ref(NOTIFY_PATH + '/on').update(patch);
+  }
+
+  /**
+   * この端末の通知トークンを、名前とひもづけて保存します。
+   * 前のトークン(oldToken)があれば片づけます。名前を選び直したときも、これで付け替えます。
+   */
+  function saveNotifyToken(token, name, platform, oldToken) {
+    initFirebase();
+    if (!validKey(token)) return Promise.reject(new Error('通知トークンが正しくありません'));
+    var patch = {};
+    patch['tokens/' + token] = {
+      name: String(name || '').slice(0, MEMBER_NAME_MAX),
+      platform: String(platform || '').slice(0, 10),
+      updatedAt: firebase.database.ServerValue.TIMESTAMP
+    };
+    if (oldToken && oldToken !== token && validKey(oldToken)) patch['tokens/' + oldToken] = null;
+    return yoteiDb.ref(NOTIFY_PATH).update(patch);
+  }
+
+  /* ===================================================================
      ■ アプリアイコン(深緑の角丸 + 生成りの「予」)
      =================================================================== */
 
@@ -1799,6 +1883,12 @@
     jobDetail: jobDetail,
     jobMonthDetail: jobMonthDetail,
     isWeekend: isWeekend,
+
+    // プッシュ通知
+    VAPID_KEY: VAPID_KEY, NOTIFY_DAYS: NOTIFY_DAYS, NOTIFY_WAIT_MIN: NOTIFY_WAIT_MIN,
+    subscribeNotifyOn: subscribeNotifyOn, subscribeNotifyMe: subscribeNotifyMe,
+    subscribeNotifyTokens: subscribeNotifyTokens, setNotifyOn: setNotifyOn,
+    saveNotifyToken: saveNotifyToken,
 
     // その他
     iconDataUri: iconDataUri

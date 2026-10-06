@@ -101,7 +101,9 @@
     editJob: null,       // 吹き出しで開いている工事id('__new__' なら新規)
     editCat: 1,          // その吹き出しで選んでいるカテゴリ
     editNewCat: null,    // 新規追加のとき、どのカテゴリの「＋」から開いたか
-    gridKey: ''          // 表を最後に描いたときの「どの一覧か」。スクロール位置を戻す判定に使います
+    gridKey: '',         // 表を最後に描いたときの「どの一覧か」。スクロール位置を戻す判定に使います
+    notifyOn: {},        // 通知を届ける人 { 名前: true }(メンバー → 🔔 通知)
+    notifyTokens: {}     // 通知を許可した端末がある人 { 名前: true }
   };
 
   var $ = function (id) { return document.getElementById(id); };
@@ -159,6 +161,10 @@
     // 工事とメンバー(追加・編集が全端末にその場で反映されます)
     YY.subscribeJobs(function () { render(); });
     YY.subscribeMembers(function () { render(); });
+
+    // 通知の設定(メンバー → 🔔 通知)。表だけを描き直します(名前で探す欄の入力を止めないため)
+    YY.subscribeNotifyOn(function (v) { S.notifyOn = v; drawNotifyTable(); });
+    YY.subscribeNotifyTokens(function (v) { S.notifyTokens = v; drawNotifyTable(); });
 
     watchWeek();
 
@@ -2445,9 +2451,13 @@
      画面「メンバー」= 名簿の管理
      ================================================================= */
   var memQ = '', memBulk = false, memBulkKubun = '自社';
+  var memView = 'list';        // 'list' = 名簿 / 'notify' = 🔔 通知
 
   function renderMembers(b) {
     if (memBulk) { renderBulk(b); return; }
+
+    b.appendChild(memTabs());
+    if (memView === 'notify') { renderNotify(b); return; }
 
     var bar = el('div', 'setbar', '');
     var inp = document.createElement('input');
@@ -2518,6 +2528,129 @@
       });
     }
     draw();
+  }
+
+  /** 名簿 / 🔔 通知 の切り替え */
+  function memTabs() {
+    var t = el('div', 'stabs', '');
+    t.setAttribute('role', 'tablist');
+    [['list', '👥 名簿'], ['notify', '🔔 通知']].forEach(function (x) {
+      var bt = document.createElement('button');
+      bt.textContent = x[1];
+      bt.className = (memView === x[0]) ? 'on' : '';
+      bt.setAttribute('role', 'tab');
+      bt.setAttribute('aria-selected', memView === x[0] ? 'true' : 'false');
+      bt.addEventListener('click', function () { memView = x[0]; render(); });
+      t.appendChild(bt);
+    });
+    return t;
+  }
+
+  /* --- 🔔 通知:人ごとに、予定の変更を届けるかどうか --------------------
+     車両管理アプリPC版の「設定 → 通知」と同じ作りです。
+     名簿の人が行、「予定の変更」が列。チェックでオン・オフ(押したときにすぐ保存)。
+     最初は全員オフ。実際に送るのは Cloud Functions(functions/index.js)です。
+     ----------------------------------------------------------------- */
+  var nQ = '';
+
+  function renderNotify(b) {
+    var bar = el('div', 'setbar', '');
+    var inp = document.createElement('input');
+    inp.placeholder = '名前で探す';
+    inp.value = nQ;
+    inp.addEventListener('input', function () { nQ = inp.value; drawNotifyTable(); });
+    bar.appendChild(inp);
+    bar.appendChild(el('div', 'nhint',
+      'オンにした人のスマホに届きます(最初は全員オフ)。押したときにすぐ保存されます。<br>' +
+      '本人の予定が変わったとき(入った・外れた・別の工事へ移った・休みになった)だけ、' +
+      '今日から' + YY.NOTIFY_DAYS + '日後までの分を知らせます。' +
+      '組んでいる途中に何度も鳴らないよう、最後の変更から' + YY.NOTIFY_WAIT_MIN + '分ほど待って1回にまとめます。<br>' +
+      '「未許可」の人は、まだスマホで通知を許可していません。オンにすると、その人の確認用アプリ(じぶん)に「🔔 通知を許可する」が出ます'));
+    if (!YY.VAPID_KEY) {
+      bar.appendChild(el('div', 'nhint warn',
+        '通知の公開鍵(common.js の VAPID_KEY)がまだ入っていないため、スマホに「通知を許可する」は出ません'));
+    }
+    b.appendChild(bar);
+    var wrap = el('div', 'ntable-wrap', '');
+    wrap.id = 'ntable';
+    b.appendChild(wrap);
+    drawNotifyTable();
+  }
+
+  /** 表に出す人(名簿の人。名前で探しているときは、当てはまる人だけ) */
+  function notifyVisible() {
+    var q = nQ.trim();
+    return YY.master.workers.filter(function (w) {
+      return w.active && (!q || w.name.indexOf(q) >= 0);
+    });
+  }
+
+  /** 通知の表を描きます。設定が変わったときは、ここだけ描き直します */
+  function drawNotifyTable() {
+    var wrap = $('ntable');
+    if (!wrap) return;              // 通知の画面を開いていないとき
+    var all = YY.master.workers.filter(function (w) { return w.active; });
+    if (!all.length) {
+      wrap.innerHTML = '<div class="soon">名簿がまだありません。「👥 名簿」で登録してください</div>';
+      return;
+    }
+    var list = notifyVisible();
+    var rows = YY.KUBUN.map(function (k) {
+      var ms = list.filter(function (w) { return w.kubun === k; });
+      if (!ms.length) return '';
+      return '<tr class="ngrp"><td colspan="2">' + esc(k) + '</td></tr>' + ms.map(function (w) {
+        var ok = !!S.notifyTokens[w.name];
+        return '<tr><td class="nname"><b' + (w.coop ? ' class="coop"' : '') + '>' + esc(w.name) + '</b>' +
+          '<span class="pst' + (ok ? ' ok' : '') + '">' + (ok ? 'スマホ許可済み' : '未許可') + '</span></td>' +
+          '<td><input type="checkbox" data-name="' + esc(w.name) + '"' + (S.notifyOn[w.name] ? ' checked' : '') +
+          ' aria-label="' + esc(w.name) + ' 予定の変更"></td></tr>';
+      }).join('');
+    }).join('');
+    var onCount = all.filter(function (w) { return S.notifyOn[w.name]; }).length;
+
+    wrap.innerHTML = '<table class="ntable"><thead><tr>' +
+      '<th>名前<small>オン ' + onCount + '名 / ' + all.length + '名</small></th>' +
+      '<th>予定の変更<small>今日〜' + YY.NOTIFY_DAYS + '日後</small>' +
+      '<div class="nall"><button type="button" data-all="on">全員オン</button>' +
+      '<button type="button" data-all="off">全員オフ</button></div></th>' +
+      '</tr></thead><tbody>' +
+      (rows || '<tr><td colspan="2"><div class="soon">見つかりませんでした</div></td></tr>') +
+      '</tbody></table>';
+
+    Array.prototype.forEach.call(wrap.querySelectorAll('input[data-name]'), function (cb) {
+      cb.addEventListener('change', function () {
+        if (!S.online) { cb.checked = !cb.checked; toast('電波が届いていません'); return; }
+        YY.setNotifyOn([cb.getAttribute('data-name')], cb.checked).catch(function (e) {
+          console.error(e);
+          toast('変更できませんでした。もう一度お試しください');
+          drawNotifyTable();
+        });
+      });
+    });
+    Array.prototype.forEach.call(wrap.querySelectorAll('[data-all]'), function (bt) {
+      bt.addEventListener('click', function () { setNotifyAll(bt.getAttribute('data-all') === 'on'); });
+    });
+  }
+
+  /** 全員オン・全員オフ(名前で探しているときは、出ている人だけ) */
+  function setNotifyAll(on) {
+    if (!S.online) { toast('電波が届いていません'); return; }
+    var searching = !!nQ.trim();
+    var names = notifyVisible().map(function (w) { return w.name; });
+    if (!names.length) return;
+    if (!window.confirm('「予定の変更」の通知を、' +
+      (searching ? '表示している ' + names.length + '人' : '全員(' + names.length + '人)') +
+      (on ? 'オン' : 'オフ') + 'にしますか?')) return;
+    // 全員オフは、名簿から隠した人などに残っているオンも一緒に消します
+    if (!on && !searching) {
+      Object.keys(S.notifyOn).forEach(function (n) { if (names.indexOf(n) < 0) names.push(n); });
+    }
+    YY.setNotifyOn(names, on).then(function () {
+      toast(on ? 'オンにしました' : 'オフにしました');
+    }).catch(function (e) {
+      console.error(e);
+      toast('変更できませんでした。もう一度お試しください');
+    });
   }
 
   /* --- まとめて追加 --------------------------------------------------- */
