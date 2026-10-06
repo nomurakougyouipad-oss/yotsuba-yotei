@@ -115,6 +115,30 @@
 }
 .pushnote a{color:var(--midori);font-weight:700}
 
+/* ---- 通知を押して開いたときの「変更のお知らせ」---- */
+.notice{margin:12px 12px 0;background:var(--kiji);border:2px solid var(--kiwaku);border-radius:12px;padding:10px 12px 12px}
+.notice .nh{display:flex;align-items:center;gap:10px}
+.notice .nh b{flex:1;font-size:16px;font-weight:900;color:var(--ki)}
+.notice .nx{
+  min-height:40px;padding:0 16px;border-radius:20px;border:1px solid var(--kiwaku);
+  background:#fff;font-size:14px;font-weight:700;color:var(--usu2);
+}
+.notice .nl{
+  display:flex;align-items:baseline;gap:10px;width:100%;margin-top:8px;padding:10px 12px;min-height:48px;
+  text-align:left;white-space:normal;background:#fff;border:1px solid var(--kiwaku);border-radius:10px;color:var(--moji);
+}
+.notice .nl .d{flex-shrink:0;font-size:16px;font-weight:900}
+.notice .nl .ft{flex:1;min-width:0;font-size:16px;line-height:1.5;word-break:break-all;overflow-wrap:anywhere}
+.notice .nl .fr{color:var(--usu)}
+.notice .nl .ft b{font-weight:900}
+.notice .nl .go{flex-shrink:0;color:var(--ki);font-weight:900}
+/* 変わった日のカード(「きょう」の札は左上、「変更」の札は右上) */
+.daycard.changed{border:3px solid var(--ki)}
+.daycard .chgbadge{
+  position:absolute;top:-11px;right:14px;background:var(--ki);color:#fff;
+  border-radius:10px;padding:2px 12px;font-size:13px;font-weight:900;
+}
+
 /* ---- 大きい画面では中央に寄せます ---- */
 @media (min-width:700px){
   .pick .list{grid-template-columns:repeat(3,1fr)}
@@ -136,6 +160,7 @@
   /* ノッチよけ */
   .mebar{padding-left:calc(14px + var(--sal));padding-right:calc(14px + var(--sar))}
   .pushbar{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
+  .notice{margin-left:calc(12px + var(--sal));margin-right:calc(12px + var(--sar))}
   .days{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
   .pick{padding-left:calc(12px + var(--sal));padding-right:calc(12px + var(--sar))}
 }
@@ -199,7 +224,8 @@
     unsubWeek: null,
     notifyOn: false,    // 事務所がこの人の通知をオンにしているか
     unsubNotify: null,
-    pushBusy: false     // 「通知を許可する」を押して、保存しているあいだ
+    pushBusy: false,    // 「通知を許可する」を押して、保存しているあいだ
+    notice: []          // 通知を押して開いたときの「変更のお知らせ」[{ date, from, to }]。閉じると空
   };
 
   var $ = function (id) { return document.getElementById(id); };
@@ -231,14 +257,15 @@
 
     try { S.me = localStorage.getItem(ME_KEY) || null; } catch (e) { S.me = null; }
 
-    // 通知を押して開いたときは、変わった日の週を出します(yotei.html?week=月曜)
-    var wk = weekFromUrl();
-    if (wk) S.monday = wk;
-    // すでに開いていた画面で通知を押したときは、sw.js から週が届きます
+    // 通知を押して開いたときは、変わった日の週と「変更のお知らせ」を出します(yotei.html?week=月曜&chg=…)
+    var opened = noticeFromUrl();
+    if (opened.week) S.monday = opened.week;
+    S.notice = opened.notice;
+    // すでに開いていた画面で通知を押したときは、sw.js から週と変更の中身が届きます
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.addEventListener('message', function (e) {
         var d = e.data || {};
-        if (d.type === 'openWeek' && /^\d{4}-\d{2}-\d{2}$/.test(d.week || '')) openWeek(d.week);
+        if (d.type === 'openWeek') openWeek(d.week, d.chg);
       });
     }
     // 端末の設定で通知を許可して戻ってきたときに、案内を出し直します
@@ -478,6 +505,8 @@
   }
 
   function renderMe(b) {
+    // 通知を押して開いたときは、いちばん上に「変更のお知らせ」
+    if (S.notice.length) b.appendChild(noticeBox());
     b.appendChild(weekNav());
 
     var w = YY.master.workerByName[S.me];
@@ -493,11 +522,15 @@
       var m = myDay(d);
       var today = YY.isToday(d);
       var dt = YY.parseKey(d);
+      var changed = S.notice.some(function (n) { return n.date === d; });
 
       var card = el('div', 'daycard' +
         (today ? ' today' : '') +
-        (m.rest && !m.jobs.length ? ' rest' : ''), '');
+        (m.rest && !m.jobs.length ? ' rest' : '') +
+        (changed ? ' changed' : ''), '');
+      card.setAttribute('data-date', d);
       if (today) card.appendChild(el('span', 'badge', 'きょう'));
+      if (changed) card.appendChild(el('span', 'chgbadge', '変更'));
 
       var top = el('div', 'top', '');
       top.appendChild(el('div', 'dw',
@@ -943,22 +976,94 @@
     clearTimeout(toast._t); toast._t = setTimeout(function () { t.classList.remove('on'); }, 2600);
   }
 
-  /** yotei.html?week=2026-10-12 の週(月曜キー)。読んだら URL からは消します(読み込み直しで戻らないように) */
-  function weekFromUrl() {
-    var m = /[?&]week=(\d{4}-\d{2}-\d{2})/.exec(location.search);
-    if (!m) return null;
+  /* =================================================================
+     通知を押して開いたとき
+       ・変わった日の週の「じぶん」を出します
+       ・いちばん上に「変更のお知らせ」(何日の、どこからどこへ)。「閉じる」で消えます
+       ・変わった日のカードは、枠の色を変えて「変更」の札を付けます
+     ================================================================= */
+
+  /** yotei.html?week=2026-10-12&chg=… を読みます。読んだら URL からは消します(読み込み直しで戻らないように) */
+  function noticeFromUrl() {
+    var out = { week: null, notice: [] };
+    var q;
+    try { q = new URLSearchParams(location.search); } catch (e) { return out; }
+    var wk = q.get('week'), chg = q.get('chg');
+    if (!wk && !chg) return out;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(wk || '')) out.week = YY.toKey(YY.mondayOf(wk));
+    out.notice = parseNotice(chg);
     try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) { }
-    return YY.toKey(YY.mondayOf(m[1]));
+    return out;
   }
 
-  /** 通知を押したとき:その週の「じぶん」を出します */
-  function openWeek(week) {
+  /** 変更の中身 [[日付, 前の行き先, 今の行き先], …] を読みます(functions/lib.js の changePayload)。形がおかしいものは捨てます */
+  function parseNotice(s) {
+    var a;
+    try { a = JSON.parse(s || '[]'); } catch (e) { return []; }
+    if (!Array.isArray(a)) return [];
+    return a.filter(function (x) {
+      return Array.isArray(x) && /^\d{4}-\d{2}-\d{2}$/.test(x[0]) &&
+        typeof x[1] === 'string' && typeof x[2] === 'string';
+    }).slice(0, 20).map(function (x) { return { date: x[0], from: x[1], to: x[2] }; });
+  }
+
+  /** 行き先 '工事id|REST' → '○○工事・休み'。空なら '未定'(通知の文面と同じ見せ方。工事名はいまの一覧から出します) */
+  function stateLabel(s) {
+    if (!s) return '未定';
+    return s.split('|')
+      .sort(function (a, b) { return (a === YY.REST_KEY) - (b === YY.REST_KEY); })   // 工事が先、休みは後ろ
+      .map(function (id) { return YY.jobLabel(id).name; })
+      .join('・');
+  }
+
+  /** 「変更のお知らせ」。1日1行で全部並べます。押すとその日のカードへ */
+  function noticeBox() {
+    var box = el('div', 'notice', '');
+    var head = el('div', 'nh', '<b>🔔 変更のお知らせ</b>');
+    var x = document.createElement('button');
+    x.className = 'nx';
+    x.textContent = '閉じる';
+    x.addEventListener('click', function () { S.notice = []; render(); });
+    head.appendChild(x);
+    box.appendChild(head);
+    S.notice.forEach(function (n) {
+      var other = YY.toKey(YY.mondayOf(n.date)) !== S.monday;   // ほかの週の日
+      var ln = document.createElement('button');
+      ln.className = 'nl';
+      ln.innerHTML = '<span class="d">' + esc(YY.dayLabel(n.date)) + '</span>' +
+        '<span class="ft"><span class="fr">' + esc(stateLabel(n.from)) + '</span> → <b>' +
+        esc(stateLabel(n.to)) + '</b></span>' +
+        (other ? '<span class="go">›</span>' : '');
+      ln.addEventListener('click', function () { showDay(n.date); });
+      box.appendChild(ln);
+    });
+    return box;
+  }
+
+  /** その日のカードを出します(ほかの週なら、その週へ移ってから) */
+  function showDay(date) {
+    var mon = YY.toKey(YY.mondayOf(date));
+    if (mon !== S.monday) {
+      S.monday = mon;
+      S.openMates = {};
+      S.openCells = {};
+      watchWeek();
+      render();
+    }
+    var c = document.querySelector('.daycard[data-date="' + date + '"]');
+    if (c && c.scrollIntoView) c.scrollIntoView({ block: 'center' });
+  }
+
+  /** すでに開いていた画面で通知を押したとき:その週の「じぶん」と「変更のお知らせ」を出します */
+  function openWeek(week, chg) {
     S.tab = 'me';
     S.picking = false;
     Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function (x) {
       x.classList.toggle('on', x.getAttribute('data-tab') === 'me');
     });
-    S.monday = YY.toKey(YY.mondayOf(week));
+    var n = parseNotice(chg);
+    if (n.length) S.notice = n;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(week || '')) S.monday = YY.toKey(YY.mondayOf(week));
     S.openMates = {};
     S.openCells = {};
     watchWeek();
