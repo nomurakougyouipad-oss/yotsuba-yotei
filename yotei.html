@@ -15,9 +15,10 @@
 
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;600;700;900&display=swap" rel="stylesheet">
 <!-- Firebase の部品の版。下の MESSAGING_SDK(通知の部品)と必ず同じ版にします。
-     通知の部品は、同じ住所(github.io)のほかのアプリと端末の中の置き場を共有します。
-     向こうが新しい版で置き場を作り直すと、古い版のこちらは開けなくなる(VersionError)ので、
-     向こうと同じか、より新しい版にしておきます。12.14 から置き場が「版2」になりました -->
+     通知の部品は、同じ住所(github.io)の車両管理アプリ(yotsuba-sharyo)と端末の中の置き場を共有します。
+     どちらかだけ新しい版にすると、古いままのほうが置き場を開けなくなる(VersionError)ので、
+     版を上げるときは、車両管理アプリと同じ日に同じ版にします(向こうは firebase-config.js の FIREBASE_SDK_VERSION)。
+     12.14 から置き場が「版2」になりました -->
 <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-database-compat.js"></script>
 
