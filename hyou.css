@@ -825,6 +825,8 @@ input{font-family:inherit}
   padding:1px 6px;font-weight:700;white-space:nowrap;vertical-align:2px;
 }
 .pst.ok{color:var(--midori);border-color:var(--midori)}
+/* 未許可の人の、スマホで許可できなかった理由 */
+.pfail{display:block;margin-top:3px;font-size:12px;font-weight:700;color:var(--aka);line-height:1.5;cursor:help}
 /* 選択シートの「名簿を直す」 */
 .fixlink{
   margin-top:10px;font-size:13px;color:var(--midori);font-weight:700;

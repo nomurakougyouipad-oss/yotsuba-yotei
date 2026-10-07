@@ -103,7 +103,8 @@
     editNewCat: null,    // 新規追加のとき、どのカテゴリの「＋」から開いたか
     gridKey: '',         // 表を最後に描いたときの「どの一覧か」。スクロール位置を戻す判定に使います
     notifyOn: {},        // 通知を届ける人 { 名前: true }(メンバー → 🔔 通知)
-    notifyTokens: {}     // 通知を許可した端末がある人 { 名前: true }
+    notifyTokens: {},    // 通知を許可した端末がある人 { 名前: true }
+    notifyFails: {}      // 通知を許可できなかった最後の記録 { 名前: { code, kind, detail, at, n } }
   };
 
   var $ = function (id) { return document.getElementById(id); };
@@ -165,6 +166,7 @@
     // 通知の設定(メンバー → 🔔 通知)。表だけを描き直します(名前で探す欄の入力を止めないため)
     YY.subscribeNotifyOn(function (v) { S.notifyOn = v; drawNotifyTable(); });
     YY.subscribeNotifyTokens(function (v) { S.notifyTokens = v; drawNotifyTable(); });
+    YY.subscribeNotifyFails(function (v) { S.notifyFails = v; drawNotifyTable(); });
 
     watchWeek();
 
@@ -2565,7 +2567,9 @@
       '本人の予定が変わったとき(入った・外れた・別の工事へ移った・休みになった)だけ、' +
       '今日から' + YY.NOTIFY_DAYS + '日後までの分を知らせます。' +
       '組んでいる途中に何度も鳴らないよう、最後の変更から' + YY.NOTIFY_WAIT_MIN + '分ほど待って1回にまとめます。<br>' +
-      '「未許可」の人は、まだスマホで通知を許可していません。オンにすると、その人の確認用アプリ(じぶん)に「🔔 通知を許可する」が出ます'));
+      '「未許可」の人は、まだスマホで通知を許可していません。オンにすると、その人の確認用アプリ(じぶん)に「🔔 通知を許可する」が出ます。<br>' +
+      'スマホで許可できなかったときは、その理由(LINE の中で開いている など)を名前の下に赤字で出します。' +
+      '赤字にマウスを乗せると、くわしい中身が出ます'));
     if (!YY.VAPID_KEY) {
       bar.appendChild(el('div', 'nhint warn',
         '通知の公開鍵(common.js の VAPID_KEY)がまだ入っていないため、スマホに「通知を許可する」は出ません'));
@@ -2601,7 +2605,8 @@
       return '<tr class="ngrp"><td colspan="2">' + esc(k) + '</td></tr>' + ms.map(function (w) {
         var ok = !!S.notifyTokens[w.name];
         return '<tr><td class="nname"><b' + (w.coop ? ' class="coop"' : '') + '>' + esc(w.name) + '</b>' +
-          '<span class="pst' + (ok ? ' ok' : '') + '">' + (ok ? 'スマホ許可済み' : '未許可') + '</span></td>' +
+          '<span class="pst' + (ok ? ' ok' : '') + '">' + (ok ? 'スマホ許可済み' : '未許可') + '</span>' +
+          (ok ? '' : notifyFailLine(S.notifyFails[w.name])) + '</td>' +
           '<td><input type="checkbox" data-name="' + esc(w.name) + '"' + (S.notifyOn[w.name] ? ' checked' : '') +
           ' aria-label="' + esc(w.name) + ' 予定の変更"></td></tr>';
       }).join('');
@@ -2630,6 +2635,22 @@
     Array.prototype.forEach.call(wrap.querySelectorAll('[data-all]'), function (bt) {
       bt.addEventListener('click', function () { setNotifyAll(bt.getAttribute('data-all') === 'on'); });
     });
+  }
+
+  /**
+   * 未許可の人の名前の下に出す、スマホで通知をオンにできなかった最後の理由(yotei/notify/fails)。
+   * 押して失敗したのか、許可できない開き方(LINE の中 など)で見ていたのかを分けて出します。
+   * マウスを乗せると、くわしい中身(どの段階・エラー・端末)が出ます
+   */
+  function notifyFailLine(f) {
+    if (!f || !f.code) return '';
+    var d = f.at ? new Date(f.at) : null;
+    var when = d ? (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + ('0' + d.getMinutes()).slice(-2) + ' ' : '';
+    var label = YY.NOTIFY_FAIL_LABELS[f.code] || f.code;
+    var tip = [f.platform, f.home ? 'ホーム画面から' : '', f.perm ? '許可:' + f.perm : '', f.detail, f.ua]
+      .filter(function (x) { return x; }).join('\n');
+    return '<span class="pfail" title="' + esc(tip) + '">' + esc(when) +
+      (f.kind === 'press' ? '押したが失敗:' : '') + esc(label) + (f.n > 1 ? '(記録' + f.n + '回)' : '') + '</span>';
   }
 
   /** 全員オン・全員オフ(名前で探しているときは、出ている人だけ) */

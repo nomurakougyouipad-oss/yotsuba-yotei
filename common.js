@@ -9,7 +9,7 @@
         yotei/members  名簿   { id, name, kubun, shozoku, order, active }
         yotei/jobs     工事   { id, name, no, category, order, active }
         yotei/weeks    予定   週ごと。assign/{工事id}/{日付}/members/{名前}
-        yotei/notify   通知   届ける人(on)と、通知を許可した端末(tokens)
+        yotei/notify   通知   届ける人(on)と、通知を許可した端末(tokens)、許可できなかった記録(fails)
    ======================================================================= */
 (function (global) {
   'use strict';
@@ -104,6 +104,7 @@
      送るのは Cloud Functions(functions/index.js)です。画面がすることは次の2つだけです。
         yotei/notify/on/{名前}           : true … 届ける人(編集アプリの メンバー → 🔔 通知)。最初は全員オフ
         yotei/notify/tokens/{通知トークン} : { name, platform, updatedAt } … 通知を許可した端末
+        yotei/notify/fails/{自動の番号}    : 通知をオンにできなかった理由(logNotifyFail のところに説明)
      VAPID_KEY が空のあいだは、確認用アプリに「通知を許可する」を出しません。
      ------------------------------------------------------------------- */
   var NOTIFY_PATH = 'yotei/notify';
@@ -1742,6 +1743,131 @@
     return yoteiDb.ref(NOTIFY_PATH).update(patch);
   }
 
+  /* --- 通知を許可できなかったとき -------------------------------------
+     確認用アプリで通知をオンにできなかった理由を、yotei/notify/fails に1件ずつ残します。
+     編集アプリの「メンバー → 🔔 通知」で、未許可の人の名前の下に最後の理由を出します。
+        yotei/notify/fails/{自動の番号} : { name, code, kind, detail, perm, platform, home, ua, at }
+          code   … 理由(下の NOTIFY_FAIL_LABELS のどれか)
+          kind   … 'press' =「通知を許可する」を押して失敗した
+                   'guide' = ボタンを出せない状態で開いていた(LINE の中 など。同じ端末・同じ理由は1回だけ)
+          detail … どの段階で、何というエラーだったか(調べる人向け)
+          perm   … そのときの通知の許可('granted' / 'denied' / 'default'。通知の仕組みが無ければ 'none')
+          home   … ホーム画面のアイコンから開いていたか
+          ua     … ブラウザの名乗り(機種・OS・LINE の中か が分かります)
+     ------------------------------------------------------------------- */
+  var NOTIFY_FAIL_LABELS = {
+    'line': 'LINEの中で開いている',
+    'inapp': 'ほかのアプリの中で開いている',
+    'ios-browser': 'ホーム画面のアイコンから開いていない',
+    'ios-old': 'iOSが古い(16.4より前)',
+    'unsupported': 'ブラウザが通知に対応していない',
+    'blocked': '通知が止められている(前に「許可しない」など)',
+    'deny': '「許可しない」を押した',
+    'dismiss': '許可の確認を閉じた',
+    'offline': '電波がない',
+    'network': '通信に失敗した',
+    'timeout': '時間切れ(電波が弱い)',
+    'sdk-load': '通知の部品を読めない',
+    'push-service': 'スマホの通知の仕組みが使えない',
+    'sw': '通知の受け口を作れない',
+    'token': '通知の登録に失敗した',
+    'save': '保存に失敗した',
+    'error': 'そのほか'
+  };
+
+  /**
+   * この端末・この開き方で、通知を受け取れるか(押す前に分かること)。
+   *   ua … navigator.userAgent
+   *   o  … { ipad, standalone, notification, serviceWorker, pushManager }
+   *          ipad = iPad(名乗りが Mac になるもの)/ standalone = ホーム画面のアイコンから開いた /
+   *          あとの3つは、その仕組みがブラウザにあるか
+   * 返す値 { os: 'ios' | 'android' | 'pc', code: '' (受け取れる) か NOTIFY_FAIL_LABELS の理由 }
+   */
+  function pushEnv(ua, o) {
+    ua = String(ua || '');
+    o = o || {};
+    var ios = /iP(hone|ad|od)/.test(ua) || !!o.ipad;
+    var android = !ios && /Android/.test(ua);
+    var os = ios ? 'ios' : (android ? 'android' : 'pc');
+    var v = /OS (\d+)_(\d+)/.exec(ua);               // iPhone の名乗り「iPhone OS 16_3」
+    var iosOld = ios && v && (+v[1] < 16 || (+v[1] === 16 && +v[2] < 4));
+    var code = '';
+    if (/\bLine\/\d/.test(ua)) code = 'line';                       // LINE の中(iPhone・Android とも「Line/13.x」と名乗ります)
+    else if (android && /; wv\)/.test(ua)) code = 'inapp';          // Android のほかのアプリの中(WebView。通知の仕組みがありません)
+    else if (iosOld) code = 'ios-old';                              // iPhone の通知は iOS 16.4 から
+    else if (ios && !o.standalone && !/Safari\//.test(ua)) code = 'inapp'; // iPhone のほかのアプリの中(Safari と名乗らない)
+    else if (ios && !o.standalone) code = 'ios-browser';            // iPhone はホーム画面のアイコンから開いたときだけ届く
+    else if (!o.notification || !o.serviceWorker || !o.pushManager) code = 'unsupported';
+    return { os: os, code: code };
+  }
+
+  /** エラーを1行の文字にします(記録の detail 用) */
+  function errText(e) {
+    if (e == null) return '';
+    if (typeof e !== 'object') return String(e).slice(0, 250);
+    var code = typeof e.code === 'string' ? e.code : '';   // DOMException の数字の code(20 など)は出しません
+    return [code, e.name, e.message].filter(function (x) { return x; }).join(' ').slice(0, 250) || String(e).slice(0, 250);
+  }
+
+  /**
+   * 「通知を許可する」を押したあと、途中で失敗したときの理由(NOTIFY_FAIL_LABELS のどれか)。
+   *   step   … どこで失敗したか 'sdk'(部品を読む)/ 'support'(対応しているか)/ 'sw'(受け口を作る)/
+   *             'token'(通知の登録)/ 'save'(保存)
+   *   err    … そのときのエラー。時間切れのときは err.timeout が true
+   *   online … いま電波が届いているか
+   */
+  function pushFailCode(step, err, online) {
+    var s = errText(err);
+    if (err && err.timeout) return online ? 'timeout' : 'offline';
+    if (!online) return 'offline';
+    if (step === 'support') return 'unsupported';
+    if (step === 'save') return 'save';
+    if (/permission-blocked|permission-default|NotAllowedError|permission denied/i.test(s)) return 'blocked';
+    if (/push service/i.test(s) || (step === 'token' && /AbortError/.test(s))) return 'push-service';
+    if (/network|failed to fetch|load failed|offline|ERR_/i.test(s)) return 'network';
+    return { sdk: 'sdk-load', sw: 'sw', token: 'token' }[step] || 'error';
+  }
+
+  /** 通知を許可できなかった理由を1件残します。保存できなくても画面は止めません(呼ぶ側で catch します) */
+  function logNotifyFail(r) {
+    initFirebase();
+    r = r || {};
+    if (!validKey(r.name)) return Promise.resolve();
+    return Promise.resolve(yoteiDb.ref(NOTIFY_PATH + '/fails').push({
+      name: String(r.name).slice(0, MEMBER_NAME_MAX),
+      code: String(r.code || 'error').slice(0, 20),
+      kind: String(r.kind || '').slice(0, 10),
+      detail: String(r.detail || '').slice(0, 300),
+      perm: String(r.perm || '').slice(0, 10),
+      platform: String(r.platform || '').slice(0, 10),
+      home: !!r.home,
+      ua: String(r.ua || '').slice(0, 400),
+      at: firebase.database.ServerValue.TIMESTAMP
+    }));
+  }
+
+  /**
+   * 人ごとの、通知を許可できなかった最後の記録を見張ります(編集アプリの 🔔 通知 に使います)。
+   * cb には { 名前: { code, kind, detail, at, ..., n: その人の回数 } } を渡します。止める関数を返します
+   */
+  function subscribeNotifyFails(cb) {
+    initFirebase();
+    var ref = yoteiDb.ref(NOTIFY_PATH + '/fails').limitToLast(500);
+    var h = ref.on('value',
+      function (s) {
+        var last = {};
+        s.forEach(function (c) {           // 古い順に来るので、あとのものほど新しい
+          var v = c.val() || {};
+          if (!v.name) return;
+          v.n = ((last[v.name] || {}).n || 0) + 1;
+          last[v.name] = v;
+        });
+        cb(last);
+      },
+      function (e) { console.warn('[common] 通知の失敗の記録を読めません:', e); cb({}); });
+    return function () { ref.off('value', h); };
+  }
+
   /* ===================================================================
      ■ アプリアイコン(深緑の角丸 + 生成りの「予」)
      =================================================================== */
@@ -1889,6 +2015,8 @@
     subscribeNotifyOn: subscribeNotifyOn, subscribeNotifyMe: subscribeNotifyMe,
     subscribeNotifyTokens: subscribeNotifyTokens, setNotifyOn: setNotifyOn,
     saveNotifyToken: saveNotifyToken,
+    NOTIFY_FAIL_LABELS: NOTIFY_FAIL_LABELS, pushEnv: pushEnv, pushFailCode: pushFailCode, errText: errText,
+    logNotifyFail: logNotifyFail, subscribeNotifyFails: subscribeNotifyFails,
 
     // その他
     iconDataUri: iconDataUri

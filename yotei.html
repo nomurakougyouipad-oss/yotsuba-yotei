@@ -114,6 +114,11 @@
   word-break:break-all;overflow-wrap:anywhere;     /* body は keep-all なので、途中でも折り返せるように */
 }
 .pushnote a{color:var(--midori);font-weight:700}
+/* 押してうまくいかなかったときの理由(次に押すまで出しておきます) */
+.pushnote.ng{
+  color:var(--aka);font-weight:700;text-align:left;background:#fff;
+  border:1.5px solid var(--aka);border-radius:10px;padding:8px 12px;
+}
 
 /* ---- 通知を押して開いたときの「変更のお知らせ」---- */
 .notice{margin:12px 12px 0;background:var(--kiji);border:2px solid var(--kiwaku);border-radius:12px;padding:10px 12px 12px}
@@ -195,7 +200,8 @@
    ★ このファイルには予定を書きこむコードがありません。
       common.js の saveCell / addJob / addMember などは一切呼びません。
       読むのは subscribeWeek / subscribeJobs / subscribeMembers だけです。
-      書くのは、通知を許可した端末の控え(yotei/notify/tokens)だけです。
+      書くのは、通知を許可した端末の控え(yotei/notify/tokens)と、
+      通知をオンにできなかった理由の記録(yotei/notify/fails)だけです。
    ===================================================================== */
 (function () {
   'use strict';
@@ -225,6 +231,7 @@
     notifyOn: false,    // 事務所がこの人の通知をオンにしているか
     unsubNotify: null,
     pushBusy: false,    // 「通知を許可する」を押して、保存しているあいだ
+    pushFail: '',       // 押してうまくいかなかった理由(YY.NOTIFY_FAIL_LABELS のどれか)。次に押すまで出します
     notice: []          // 通知を押して開いたときの「変更のお知らせ」[{ date, from, to }]。閉じると空
   };
 
@@ -1077,10 +1084,10 @@
        ・送るのは Cloud Functions(functions/index.js)、表示するのは sw.js です
      ================================================================= */
   var TOKEN_KEY = 'yotsuba-yotei-push-token';      // この端末の通知トークン
+  var GUIDE_KEY = 'yotsuba-yotei-push-guide';      // 記録した「ボタンを出せない理由」(同じ名前・同じ理由は1回だけ記録します)
   var MESSAGING_SDK = 'https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js';
-  var isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  var inLine = / Line\//.test(navigator.userAgent);  // LINE の中のブラウザ
+  // 待つ長さの上限(電波が弱いと、返事が来ないまま止まることがあるので、ここで打ち切ります)
+  var WAIT_PERM = 60000, WAIT_SDK = 20000, WAIT_SW = 20000, WAIT_TOKEN = 30000, WAIT_SAVE = 20000;
 
   function isStandalone() {
     return navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
@@ -1090,15 +1097,32 @@
     try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) { }
   }
 
-  /** この端末の通知の状態 */
+  /** この端末・この開き方で、通知を受け取れるか { os, code }(common.js の pushEnv) */
+  function pushEnv() {
+    return YY.pushEnv(navigator.userAgent, {
+      ipad: navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1,
+      standalone: isStandalone(),
+      notification: 'Notification' in window,
+      serviceWorker: 'serviceWorker' in navigator,
+      pushManager: 'PushManager' in window
+    });
+  }
+  function platform() { return pushEnv().os; }
+  function isOnline() { return navigator.onLine !== false && S.online !== false; }
+
+  /**
+   * この端末の通知の状態
+   *   'off' … まだ準備できていない(公開鍵が入っていない)
+   *   'on'  … 許可ずみ / 'ask' … まだ許可していない(「🔔 通知を許可する」を出す)
+   *   それ以外は、ボタンを出せない理由('line' LINE の中 / 'inapp' ほかのアプリの中 /
+   *   'ios-browser' ホーム画面から開いていない / 'ios-old' iOS が古い / 'unsupported' ブラウザが対応していない /
+   *   'blocked' 通知が止められている)
+   */
   function pushState() {
-    if (!YY.VAPID_KEY) return 'off';                    // まだ準備できていない(公開鍵が入っていない)
-    if (inLine) return 'line';                          // LINE の中では通知を受け取れない
-    if (isIOS && !isStandalone()) return 'ios-browser'; // iPhone はホーム画面から開いたときだけ届く
-    if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
-      return 'unsupported';
-    }
-    if (Notification.permission === 'denied') return 'denied';
+    if (!YY.VAPID_KEY) return 'off';
+    var c = pushEnv().code;
+    if (c) return c;
+    if (Notification.permission === 'denied') return 'blocked';
     return (Notification.permission === 'granted' && lsGet(TOKEN_KEY)) ? 'on' : 'ask';
   }
 
@@ -1106,105 +1130,230 @@
   function watchNotify() {
     if (S.unsubNotify) { S.unsubNotify(); S.unsubNotify = null; }
     S.notifyOn = false;
+    S.pushFail = '';
     if (!YY.VAPID_KEY || !S.me) return;
     S.unsubNotify = YY.subscribeNotifyMe(S.me, function (on) { S.notifyOn = on; render(); });
   }
 
+  /* ---- 失敗したとき ----
+     どこで止まったかを { yyStep, err } の形で投げ、最後に理由(YY.NOTIFY_FAIL_LABELS)に直します */
+  function stepFail(step) {
+    return function (err) { throw (err && err.yyStep) ? err : { yyStep: step, err: err }; };
+  }
+  /** p が ms ミリ秒たっても終わらなければ、時間切れ(err.timeout)にします */
+  function inTime(p, ms) {
+    return new Promise(function (ok, ng) {
+      var t = setTimeout(function () {
+        var e = new Error('時間切れ ' + (ms / 1000) + '秒'); e.timeout = true; ng(e);
+      }, ms);
+      Promise.resolve(p).then(function (v) { clearTimeout(t); ok(v); }, function (e) { clearTimeout(t); ng(e); });
+    });
+  }
+
+  /** 通知をオンにできなかった理由を Firebase に残します(編集アプリの 🔔 通知 で見られます)。残せたら true */
+  function logPushFail(code, kind, detail) {
+    if (!S.me) return Promise.resolve(false);
+    return YY.logNotifyFail({
+      name: S.me, code: code, kind: kind, detail: detail,
+      perm: ('Notification' in window) ? Notification.permission : 'none',
+      platform: platform(), home: isStandalone(), ua: navigator.userAgent
+    }).then(function () { return true; }, function (e) {
+      console.warn('[通知] 理由を記録できませんでした', e);
+      return false;
+    });
+  }
+  /**
+   * ボタンを出せない状態で開いていたことも残します(同じ名前・同じ理由は、この端末で1回だけ)。
+   * 「残した」と端末におぼえるのは、保存できたときだけです(できなければ、次に開いたときにもう一度)
+   */
+  var guided = {};
+  function guideKey(code) { return S.me + ':' + code; }
+  function guideDone(k) { return !!guided[k] || lsGet(GUIDE_KEY).split('\n').indexOf(k) >= 0; }
+  function rememberGuide(k) {
+    guided[k] = true;
+    var seen = lsGet(GUIDE_KEY).split('\n').filter(function (x) { return x && x !== k; });
+    lsSet(GUIDE_KEY, seen.concat(k).slice(-30).join('\n'));
+  }
+  function logGuideOnce(code) {
+    var k = guideKey(code);
+    if (!S.me || guideDone(k)) return;
+    guided[k] = true;              // この画面を開いているあいだは、描き直すたびに残さない
+    logPushFail(code, 'guide', '').then(function (ok) { if (ok) rememberGuide(k); });
+  }
+
   /** 通知の部品(Firebase Cloud Messaging)は、使うときだけ読みます */
-  var messagingP = null;
-  function getMessaging() {
-    if (!messagingP) {
-      messagingP = new Promise(function (ok, ng) {
+  var sdkP = null;
+  function loadSdk() {
+    if (!sdkP) {
+      sdkP = new Promise(function (ok, ng) {
         if (firebase.messaging) { ok(); return; }
         var s = document.createElement('script');
         s.src = MESSAGING_SDK;
         s.onload = function () { ok(); };
-        s.onerror = function () { ng(new Error('通知の部品を読めません')); };
+        s.onerror = function () {
+          sdkP = null;               // 次に押したときに、もう一度読みます
+          s.remove();
+          ng(new Error('通知の部品を読めません ' + MESSAGING_SDK));
+        };
         document.head.appendChild(s);
-      }).then(function () {
-        return Promise.resolve(firebase.messaging.isSupported());
-      }).then(function (ok) {
-        return ok ? firebase.app().messaging() : null;
-      }).catch(function (e) {
-        console.warn(e);
-        messagingP = null;         // 次に押したときに、もう一度読みます
-        return null;
       });
     }
-    return messagingP;
+    return sdkP;
+  }
+  function getMessaging() {
+    return inTime(loadSdk(), WAIT_SDK).catch(stepFail('sdk')).then(function () {
+      return Promise.resolve(firebase.messaging.isSupported());
+    }).then(function (ok) {
+      if (!ok) throw { yyStep: 'support', err: new Error('messaging.isSupported() が false') };
+      return firebase.app().messaging();
+    }).catch(stepFail('support'));
   }
 
-  function platform() {
-    return isIOS ? 'ios' : (/Android/.test(navigator.userAgent) ? 'android' : 'pc');
-  }
-
-  /** この端末の通知トークンを取り、「じぶん」の名前とひもづけて保存します(前のトークンは片づけます) */
+  /**
+   * この端末の通知トークンを取り、「じぶん」の名前とひもづけて保存します(前のトークンは片づけます)。
+   * 失敗したときは { yyStep, err } で終わります
+   */
   function saveToken() {
-    if (!S.me) return Promise.resolve(false);
+    var me = S.me;
+    if (!me) return Promise.reject({ yyStep: 'save', err: new Error('名前を選んでいません') });
     return getMessaging().then(function (m) {
-      if (!m) return false;
-      return navigator.serviceWorker.register('./sw.js')
-        .then(function () { return navigator.serviceWorker.ready; })   // 動き出してからでないとトークンを取れません
-        .then(function (reg) { return m.getToken({ vapidKey: YY.VAPID_KEY, serviceWorkerRegistration: reg }); })
-        .then(function (token) {
-          if (!token) return false;
-          return YY.saveNotifyToken(token, S.me, platform(), lsGet(TOKEN_KEY)).then(function () {
-            lsSet(TOKEN_KEY, token);
-            return true;
-          });
-        });
+      return inTime(navigator.serviceWorker.register('./sw.js').then(function () {
+        return navigator.serviceWorker.ready;       // 動き出してからでないとトークンを取れません
+      }), WAIT_SW).catch(stepFail('sw')).then(function (reg) {
+        return inTime(m.getToken({ vapidKey: YY.VAPID_KEY, serviceWorkerRegistration: reg }), WAIT_TOKEN)
+          .catch(stepFail('token'));
+      });
+    }).then(function (token) {
+      if (!token) throw { yyStep: 'token', err: new Error('トークンが空でした') };
+      return inTime(YY.saveNotifyToken(token, me, platform(), lsGet(TOKEN_KEY)), WAIT_SAVE)
+        .catch(stepFail('save'))
+        .then(function () { lsSet(TOKEN_KEY, token); });
     });
   }
 
   /** 「🔔 通知を許可する」。iPhone では、押した直後に許可のダイアログを出す必要があります(先に何かを待たない) */
   function enablePush() {
     if (S.pushBusy) return;
-    var ask;
+    var t0 = Date.now(), ask;
     try {
       ask = (Notification.permission === 'granted') ? 'granted' : Notification.requestPermission();
-    } catch (e) { ask = 'default'; }
+    } catch (e) { ask = Promise.reject({ yyStep: 'perm', err: e }); }
     S.pushBusy = true;
+    S.pushFail = '';
     render();
-    Promise.resolve(ask).then(function (p) {
-      if (p !== 'granted') return 'denied';
-      return saveToken().catch(function (e) { console.error(e); return false; });
-    }).then(function (r) {
+    inTime(ask, WAIT_PERM).then(function (p) {
+      p = p || Notification.permission;
+      if (p === 'granted') return saveToken();
+      // すぐに断られたときは、確認が出ていません(前に「許可しない」を押した・端末の設定で止めている など)
+      var ms = Date.now() - t0;
+      throw {
+        yyStep: 'perm', code: p === 'denied' ? (ms < 800 ? 'blocked' : 'deny') : 'dismiss',
+        err: new Error('許可の結果 ' + p + '(' + ms + 'ミリ秒)')
+      };
+    }, function (e) {
+      // 許可の確認に答えないまま時間がたった(確認が小さく出て気づかなかった など)
+      throw (e && e.yyStep) ? e : { yyStep: 'perm', code: 'dismiss', err: e };
+    }).then(function () {
       S.pushBusy = false;
-      if (r === 'denied') toast('通知は許可されませんでした');
-      else toast(r ? '通知をオンにしました' : '通知をオンにできませんでした。電波のよい所でもう一度押してください');
+      toast('通知をオンにしました');
+      render();
+    }, function (f) {
+      S.pushBusy = false;
+      if (!f || !f.yyStep) f = { yyStep: 'error', err: f };
+      var code = f.code || YY.pushFailCode(f.yyStep, f.err, isOnline());
+      console.error('[通知] オンにできませんでした:', code, f.yyStep, f.err);
+      S.pushFail = code;
+      // 「許可しない」のときは、このあと出る「止まっています」を重ねて残しません
+      var stop = (code === 'deny' || code === 'blocked') ? guideKey('blocked') : '';
+      if (stop) guided[stop] = true;
+      logPushFail(code, 'press', f.yyStep + ': ' + YY.errText(f.err)).then(function (ok) {
+        if (ok && stop) rememberGuide(stop);
+      });
+      toast(code === 'deny' || code === 'blocked' || code === 'dismiss'
+        ? '通知は許可されませんでした' : '通知をオンにできませんでした');
       render();
     });
   }
 
   /**
+   * 理由ごとの、本人に見せる説明(HTML)。押す前の案内にも、押したあとの理由にも使います
+   */
+  function pushMsg(code) {
+    var os = pushEnv().os, ios = os === 'ios', android = os === 'android';
+    var retry = 'もう一度押してもだめなときは、事務所にお知らせください';
+    var radio = '電波のよい所で、もう一度押してください';
+    switch (code) {
+      case 'line':
+        return 'LINE の中では通知を受け取れません。<br>' +
+          '<a href="yotei.html?openExternalBrowser=1">' + (ios ? 'Safari' : 'Chrome') + ' で開き直す</a>' +
+          (ios ? 'と、ホーム画面に追加できます'
+            : '<br>開かないときは、LINE の画面のメニューから「ブラウザで開く」を選んでください');
+      case 'inapp':
+        return 'このアプリの中では通知を受け取れません。<br>' + (ios
+          ? 'Safari で開いてから、ホーム画面に追加してください'
+          : 'メニューの「ブラウザで開く」などから、Chrome で開いてください');
+      case 'ios-browser':
+        return 'ホーム画面に追加すると通知が届きます。<br>' +
+          'Safari の共有ボタン(□に↑)→「ホーム画面に追加」で置いたアイコンから開いてください。<br>' +
+          '前から置いてあるアイコンで開いてもこの表示が出るときは、そのアイコンを消して、もう一度追加してください';
+      case 'ios-old':
+        return 'この iPhone は iOS が古いため、通知を受け取れません。<br>' +
+          '設定 →「一般」→「ソフトウェアアップデート」で、iOS 16.4 以上にしてください';
+      case 'unsupported':
+        return 'このブラウザは通知に対応していません。<br>' +
+          (ios ? 'iOS を新しくしてから、Safari でホーム画面に追加してください'
+            : (android ? 'Chrome で開いてください' : 'Chrome か Edge で開いてください'));
+      case 'blocked':
+      case 'deny':
+        return (code === 'deny' ? '「許可しない」が選ばれました。' : '前に「許可しない」を選んだため、通知が止まっています。') +
+          '<br>' + (ios
+            ? 'iPhone の 設定 →「通知」→「よつば予定」で「通知を許可」をオンにしてから、開き直してください'
+            : (android
+              ? 'Chrome の右上の︙ →「設定」→「サイトの設定」→「通知」で、このページを「許可」にしてから、開き直してください'
+              : 'アドレス欄の左のマークから、通知を「許可」にしてから、開き直してください'));
+      case 'dismiss':
+        return '許可の確認が閉じられました。<br>もう一度押して、「許可」を選んでください';
+      case 'offline':
+        return '電波が届いていません。<br>' + radio;
+      case 'network':
+      case 'timeout':
+        return '電波が弱いようです。<br>' + radio;
+      case 'sdk-load':
+        return '通知の部品を読みこめませんでした。<br>' + radio + '。' + retry;
+      case 'push-service':
+        return 'このスマホでは、通知の受け取りを始められませんでした。<br>' +
+          (android ? 'Chrome 以外のブラウザで開いているときは、Chrome で開いて、もう一度押してください。' : '') + retry;
+      default:
+        return '通知をオンにできませんでした(' + esc(YY.NOTIFY_FAIL_LABELS[code] || code) + ')。<br>' + retry;
+    }
+  }
+
+  /**
    * 名前の下に出す案内。事務所がオンにしている人にだけ出します。
-   *   まだ許可していない → 「🔔 通知を許可する」
-   *   iPhone のブラウザで見ている → ホーム画面に追加する案内
+   *   まだ許可していない → 「🔔 通知を許可する」(押してうまくいかなかったときは、その理由も)
+   *   許可できない開き方・端末 → その理由と、どうすればよいか(Firebase にも1回だけ残します)
    */
   function pushBar() {
     if (!S.notifyOn) return null;
     var st = pushState();
+    if (st === 'on' || st === 'off') return null;
+    var box = el('div', 'pushbar', '');
     if (st === 'ask') {
-      var box = el('div', 'pushbar', '');
       var bt = document.createElement('button');
       bt.className = 'pushbtn';
       bt.textContent = S.pushBusy ? '通知をオンにしています…' : '🔔 通知を許可する';
       bt.disabled = S.pushBusy;
       bt.addEventListener('click', enablePush);
       box.appendChild(bt);
-      box.appendChild(el('p', 'pushnote', '予定が変わったときに、このスマホにお知らせが届きます'));
+      box.appendChild(S.pushFail && !S.pushBusy
+        ? el('p', 'pushnote ng', pushMsg(S.pushFail))
+        : el('p', 'pushnote', '予定が変わったときに、このスマホにお知らせが届きます'));
       return box;
     }
-    var msg = {
-      'ios-browser': 'ホーム画面に追加すると通知が届きます。<br>' +
-        'Safari の共有ボタン(□に↑)→「ホーム画面に追加」で置いたアイコンから開いてください',
-      'line': 'LINE の中では通知を受け取れません。<br>' +
-        '<a href="yotei.html?openExternalBrowser=1">' + (isIOS ? 'Safari' : 'ブラウザ') + 'で開き直す</a>' +
-        (isIOS ? 'と、ホーム画面に追加できます' : ''),
-      'denied': 'この端末では通知が止められています。端末の設定で許可してください',
-      'unsupported': 'この端末では通知を使えません'
-    }[st];
-    return msg ? el('div', 'pushbar', '<p class="pushnote">' + msg + '</p>') : null;
+    logGuideOnce(st);
+    // 押して「許可しない」になった直後は、そのことを出します(このあと開き直すと「止まっています」の案内になります)
+    box.appendChild(el('p', 'pushnote', pushMsg(st === 'blocked' && S.pushFail === 'deny' ? 'deny' : st)));
+    return box;
   }
 
   boot();

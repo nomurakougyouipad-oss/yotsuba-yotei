@@ -133,6 +133,23 @@
             "$other": { ".validate": false }
           }
         },
+        "fails": {
+          "$id": {
+            ".validate": "!data.exists() && newData.hasChildren(['name','code','at'])",
+
+            "name":      { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 30" },
+            "code":      { ".validate": "newData.isString() && newData.val().length <= 20" },
+            "kind":      { ".validate": "newData.isString() && newData.val().length <= 10" },
+            "detail":    { ".validate": "newData.isString() && newData.val().length <= 300" },
+            "perm":      { ".validate": "newData.isString() && newData.val().length <= 10" },
+            "platform":  { ".validate": "newData.isString() && newData.val().length <= 10" },
+            "home":      { ".validate": "newData.isBoolean()" },
+            "ua":        { ".validate": "newData.isString() && newData.val().length <= 400" },
+            "at":        { ".validate": "newData.isNumber()" },
+
+            "$other": { ".validate": false }
+          }
+        },
         "$other": { ".validate": false }
       }
     }
