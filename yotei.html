@@ -283,19 +283,22 @@
         var d = e.data || {};
         // 開いていた画面で通知を押したとき(sw.js が開き直せなかったときだけ届きます)
         if (d.type === 'openWeek') openWeek(d.week, d.chg, d.id);
-        // 開いているあいだに通知が届いたとき
-        if (d.type === 'noticeSaved') refreshNotice();
+        // 開いているあいだに通知が届いたとき(見ているので、アイコンの数字はすぐ0に戻します)
+        if (d.type === 'noticeSaved') { refreshNotice(); clearBadge(); }
       });
     }
-    // 前に出たとき:端末の設定で通知を許可して戻ってきたときの案内と、「変更のお知らせ」を出し直します
+    // 前に出たとき:端末の設定で通知を許可して戻ってきたときの案内と、「変更のお知らせ」を出し直し、
+    // アイコンの数字(未読の数)を0に戻します
     document.addEventListener('visibilitychange', function () {
       if (document.hidden) return;
       if (S.tab === 'me') render();
       refreshNotice();
+      clearBadge();
     });
-    window.addEventListener('pageshow', function (e) { if (e.persisted) refreshNotice(); });
-    window.addEventListener('focus', function () { refreshNotice(); });
+    window.addEventListener('pageshow', function (e) { if (e.persisted) { refreshNotice(); clearBadge(); } });
+    window.addEventListener('focus', function () { refreshNotice(); clearBadge(); });
     refreshNotice();
+    clearBadge();
     watchNotify();
     // 許可ずみの端末は、開くたびにトークンを取り直して保存します(変わっていたり、無効として消されていても戻る)
     if (S.me && pushState() === 'on') saveToken().catch(function (e) { console.warn(e); });
@@ -1014,6 +1017,7 @@
      ================================================================= */
   var NOTICE_CACHE = 'yotei-notice';                        // sw.js と同じ名前
   var NOTICE_URL = new URL('notice.json', location.href).href;
+  var BADGE_URL = new URL('badge.json', location.href).href;   // アイコンの数字(sw.js が通知のたびに1つ増やします)
   var JUMP_MS = 2 * 60 * 1000;    // 押してからこの時間のうちに前に出たら、その通知の週を開きます
   var jumped = {};                // 週を開いた通知の id(同じ通知で何度も移らないように)
 
@@ -1030,11 +1034,11 @@
     return out;
   }
 
-  /** sw.js が控えた、届いた通知を読みます */
+  /** sw.js が控えた、届いた通知を読みます(控えの置き場がまだ無ければ作りません) */
   function readNotices() {
     if (!('caches' in window)) return Promise.resolve([]);
-    return caches.open(NOTICE_CACHE)
-      .then(function (c) { return c.match(NOTICE_URL); })
+    return caches.has(NOTICE_CACHE)
+      .then(function (has) { return has ? caches.open(NOTICE_CACHE).then(function (c) { return c.match(NOTICE_URL); }) : null; })
       .then(function (r) { return r ? r.json() : []; })
       .then(function (a) { return Array.isArray(a) ? a : []; })
       .catch(function () { return []; });
@@ -1042,7 +1046,10 @@
   /** 控えから消します。ids を渡さなければ全部 */
   function forgetNotices(ids) {
     if (!('caches' in window)) return Promise.resolve();
-    return caches.open(NOTICE_CACHE).then(function (c) {
+    return caches.has(NOTICE_CACHE).then(function (has) {
+      return has ? caches.open(NOTICE_CACHE) : null;
+    }).then(function (c) {
+      if (!c) return;
       if (!ids) return c.delete(NOTICE_URL);
       return c.match(NOTICE_URL)
         .then(function (r) { return r ? r.json() : []; })
@@ -1093,6 +1100,25 @@
     S.noticeIds = [];
     S.notice = [];
     render();
+  }
+
+  /**
+   * アイコンの数字(未読の数)を0に戻します。開いたとき・前に出たとき・見ているあいだに通知が届いたとき。
+   * 数字を付けられない端末では何もしません(エラーも出しません)。裏にいるあいだは戻しません
+   */
+  function clearBadge() {
+    if (document.hidden) return;
+    try {
+      if (typeof navigator.clearAppBadge === 'function') {
+        var p = navigator.clearAppBadge();
+        if (p && typeof p.catch === 'function') p.catch(function () { });
+      }
+    } catch (e) { }
+    if (!('caches' in window)) return;
+    // 数えている数も消します(sw.js は次の通知を1から数えます)。控えの置き場がまだ無ければ作りません
+    caches.has(NOTICE_CACHE).then(function (has) {
+      if (has) return caches.open(NOTICE_CACHE).then(function (c) { return c.delete(BADGE_URL); });
+    }).catch(function () { });
   }
 
   /** 別の人に選び直したとき:前の人あての通知を全部片づけます */

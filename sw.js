@@ -6,6 +6,8 @@
 //   確認用アプリ(yotei.html)は、開いたとき・前に出たときにここを読んで「変更のお知らせ」を出すので、
 //   通知を押したときにアプリが閉じていても、裏で開いたままでも、同じように出ます
 // - 押したら確認用アプリの、変わった日の週を開きます
+// - 通知が届くたびに、アプリのアイコンの数字(未読の数)を1つ増やします。確認用アプリを開くと0に戻ります。
+//   数字を付けられない端末(Android の多くの機種など)では何もしません
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 
@@ -50,6 +52,35 @@ async function tellPages(msg) {
   list.forEach(c => { try { c.postMessage(msg); } catch (err) { } });
 }
 
+/* ---- アイコンの数字(未読の数) ----
+   届いた数を控えと同じ Cache Storage(badge.json の { n })に置き、通知のたびに1つ増やします。
+   0に戻すのは確認用アプリです(yotei.html の clearBadge。開いたとき・前に出たときに badge.json を消します) */
+const BADGE_URL = new URL('badge.json', self.registration.scope).href;
+
+async function bumpBadge() {
+  const nav = self.navigator;
+  if (!nav || typeof nav.setAppBadge !== 'function') return;   // 数字を付けられない端末
+  let n;
+  try {
+    const c = await caches.open(NOTICE_CACHE);
+    const r = await c.match(BADGE_URL);
+    n = ((r && (await r.json()).n) || 0) + 1;
+    await c.put(BADGE_URL, new Response(JSON.stringify({ n }), { headers: { 'content-type': 'application/json' } }));
+  } catch (err) {
+    // 数を控えられないときは、いま出ている通知の数にします
+    try { n = (await self.registration.getNotifications()).length || 1; } catch (err2) { n = 1; }
+  }
+  await nav.setAppBadge(n);
+}
+
+// 控えと数字の読み書きは1つずつ順に行います(続けて届いたときに、数え漏れたり控えが消えたりしないように)
+let queue = Promise.resolve();
+function serial(fn) {
+  const p = queue.then(fn);
+  queue = p.catch(() => { });
+  return p;
+}
+
 // 届いたら表示する(中身は data の title / body / tag / url / chg)
 //   chg … 変わった日と前後の行き先。「変更のお知らせ」に使います
 self.addEventListener('push', e => {
@@ -59,17 +90,19 @@ self.addEventListener('push', e => {
   const id = d.tag || ('n' + Date.now());
   const url = d.url || './yotei.html';
   const week = new URL(url, self.registration.scope).searchParams.get('week') || '';
+  const shown = self.registration.showNotification(d.title || 'よつば週間予定', {
+    body: d.body || '',
+    tag: d.tag || undefined,
+    icon: './icons/yotei-192.png',
+    data: { id, url, chg: d.chg || '' },
+  });
+  // アイコンの数字を1つ増やし、変更の中身を控えます。
+  // どちらも失敗しても通知の表示は止めません。済んだら開いている画面に知らせます
+  const badge = shown.then(() => serial(bumpBadge)).catch(() => { });
+  const saved = d.chg ? serial(() => saveNotice({ id, at: Date.now(), week, chg: d.chg })).catch(() => { }) : null;
   e.waitUntil(Promise.all([
-    self.registration.showNotification(d.title || 'よつば週間予定', {
-      body: d.body || '',
-      tag: d.tag || undefined,
-      icon: './icons/yotei-192.png',
-      data: { id, url, chg: d.chg || '' },
-    }),
-    // 変更の中身を控え、開いている画面にも知らせます(控えられなくても、通知の表示は止めません)
-    d.chg
-      ? saveNotice({ id, at: Date.now(), week, chg: d.chg }).then(() => tellPages({ type: 'noticeSaved' })).catch(() => { })
-      : null,
+    shown,
+    Promise.all([badge, saved]).then(() => tellPages({ type: 'noticeSaved' })).catch(() => { }),
   ]));
 });
 
@@ -89,7 +122,7 @@ self.addEventListener('notificationclick', e => {
   e.waitUntil((async () => {
     const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     const open = list.find(c => c.url.startsWith(self.registration.scope) && c.url.includes('yotei.html'));
-    const marked = markClicked(data.id).catch(() => { });
+    const marked = serial(() => markClicked(data.id)).catch(() => { });
     if (!open) {
       await self.clients.openWindow(url.href);
       return marked;
