@@ -1770,6 +1770,7 @@
     'sdk-load': '通知の部品を読めない',
     'push-service': 'スマホの通知の仕組みが使えない',
     'sw': '通知の受け口を作れない',
+    'version': 'ほかのアプリと部品の版がぶつかっている',
     'token': '通知の登録に失敗した',
     'save': '保存に失敗した',
     'error': 'そのほか'
@@ -1822,6 +1823,8 @@
     if (!online) return 'offline';
     if (step === 'support') return 'unsupported';
     if (step === 'save') return 'save';
+    // 同じ住所のほかのアプリが、新しい版の Firebase で端末の中の置き場を作り直していた(yotei.html の Firebase の版を上げる)
+    if (/VersionError/.test(s)) return 'version';
     if (/permission-blocked|permission-default|NotAllowedError|permission denied/i.test(s)) return 'blocked';
     if (/push service/i.test(s) || (step === 'token' && /AbortError/.test(s))) return 'push-service';
     if (/network|failed to fetch|load failed|offline|ERR_/i.test(s)) return 'network';

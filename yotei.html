@@ -14,8 +14,12 @@
 <meta name="apple-mobile-web-app-title" content="よつば予定">
 
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;600;700;900&display=swap" rel="stylesheet">
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<!-- Firebase の部品の版。下の MESSAGING_SDK(通知の部品)と必ず同じ版にします。
+     通知の部品は、同じ住所(github.io)のほかのアプリと端末の中の置き場を共有します。
+     向こうが新しい版で置き場を作り直すと、古い版のこちらは開けなくなる(VersionError)ので、
+     向こうと同じか、より新しい版にしておきます。12.14 から置き場が「版2」になりました -->
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-database-compat.js"></script>
 
 <link rel="stylesheet" href="hyou.css">
 
@@ -1085,7 +1089,7 @@
      ================================================================= */
   var TOKEN_KEY = 'yotsuba-yotei-push-token';      // この端末の通知トークン
   var GUIDE_KEY = 'yotsuba-yotei-push-guide';      // 記録した「ボタンを出せない理由」(同じ名前・同じ理由は1回だけ記録します)
-  var MESSAGING_SDK = 'https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js';
+  var MESSAGING_SDK = 'https://www.gstatic.com/firebasejs/12.19.0/firebase-messaging-compat.js';  // <head> の Firebase と同じ版に
   // 待つ長さの上限(電波が弱いと、返事が来ないまま止まることがあるので、ここで打ち切ります)
   var WAIT_PERM = 60000, WAIT_SDK = 20000, WAIT_SW = 20000, WAIT_TOKEN = 30000, WAIT_SAVE = 20000;
 
