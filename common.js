@@ -1743,6 +1743,41 @@
     return yoteiDb.ref(NOTIFY_PATH).update(patch);
   }
 
+  /* --- 通知を押して開いたときの「変更のお知らせ」 ------------------------
+     変更の中身は、通知のデータ chg(functions/lib.js の changePayload)で届きます。
+     sw.js が届いた通知をこの端末に控え、確認用アプリは開いたとき・前に出たときにそれを読みます。
+     ------------------------------------------------------------------- */
+
+  /** chg の文字を [[日付, 前の行き先, 今の行き先], …] にします。形がおかしいものは捨てます */
+  function noticeTriples(s) {
+    var a;
+    try { a = typeof s === 'string' ? JSON.parse(s || '[]') : s; } catch (e) { return []; }
+    if (!Array.isArray(a)) return [];
+    return a.filter(function (x) {
+      return Array.isArray(x) && /^\d{4}-\d{2}-\d{2}$/.test(x[0]) &&
+        typeof x[1] === 'string' && typeof x[2] === 'string';
+    }).slice(0, 20);
+  }
+
+  /**
+   * 通知ごとの chg を、届いた順(古い順)に重ねて1つにします。返す値は日付順の [{ date, from, to }]。
+   * 同じ日が何度も変わったときは、最初の「前」と最後の「今」にします。
+   * 前と今が同じになった日(A→B→A。結局もとどおり)と、today より前の日は出しません
+   */
+  function mergeNotices(payloads, today) {
+    var by = {};
+    (payloads || []).forEach(function (s) {
+      noticeTriples(s).forEach(function (x) {
+        if (by[x[0]]) by[x[0]].to = x[2];
+        else by[x[0]] = { date: x[0], from: x[1], to: x[2] };
+      });
+    });
+    return Object.keys(by).sort()
+      .filter(function (d) { return (!today || d >= today) && by[d].from !== by[d].to; })
+      .map(function (d) { return by[d]; })
+      .slice(0, 20);
+  }
+
   /* --- 通知を許可できなかったとき -------------------------------------
      確認用アプリで通知をオンにできなかった理由を、yotei/notify/fails に1件ずつ残します。
      編集アプリの「メンバー → 🔔 通知」で、未許可の人の名前の下に最後の理由を出します。
@@ -2020,6 +2055,7 @@
     saveNotifyToken: saveNotifyToken,
     NOTIFY_FAIL_LABELS: NOTIFY_FAIL_LABELS, pushEnv: pushEnv, pushFailCode: pushFailCode, errText: errText,
     logNotifyFail: logNotifyFail, subscribeNotifyFails: subscribeNotifyFails,
+    noticeTriples: noticeTriples, mergeNotices: mergeNotices,
 
     // その他
     iconDataUri: iconDataUri

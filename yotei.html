@@ -237,7 +237,10 @@
     unsubNotify: null,
     pushBusy: false,    // 「通知を許可する」を押して、保存しているあいだ
     pushFail: '',       // 押してうまくいかなかった理由(YY.NOTIFY_FAIL_LABELS のどれか)。次に押すまで出します
-    notice: []          // 通知を押して開いたときの「変更のお知らせ」[{ date, from, to }]。閉じると空
+    notice: [],         // 「変更のお知らせ」に出す中身 [{ date, from, to }]。閉じると空
+    noticeStored: [],   // sw.js が控えた、届いた通知 [{ id, at, week, chg, clickedAt }](最後に読んだもの)
+    noticeExtra: [],    // 押して開いたときの URL・メッセージで受け取った通知 [{ id, chg }]
+    noticeIds: []       // いま出している通知の id(「閉じる」で控えから消すもの)
   };
 
   var $ = function (id) { return document.getElementById(id); };
@@ -269,21 +272,30 @@
 
     try { S.me = localStorage.getItem(ME_KEY) || null; } catch (e) { S.me = null; }
 
-    // 通知を押して開いたときは、変わった日の週と「変更のお知らせ」を出します(yotei.html?week=月曜&chg=…)
+    // 「変更のお知らせ」は、sw.js がこの端末に控えた届いた通知から出します(refreshNotice)。
+    // 通知を押して開いたときは、URL(yotei.html?week=月曜&chg=…&nid=…)の週を開き、その中身も合わせます
     var opened = noticeFromUrl();
     if (opened.week) S.monday = opened.week;
-    S.notice = opened.notice;
-    // すでに開いていた画面で通知を押したときは、sw.js から週と変更の中身が届きます
+    if (opened.extra) { S.noticeExtra.push(opened.extra); jumped[opened.extra.id] = true; }
+    computeNotice();               // 描くのは、このあと読みこみが済んでから
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.addEventListener('message', function (e) {
         var d = e.data || {};
-        if (d.type === 'openWeek') openWeek(d.week, d.chg);
+        // 開いていた画面で通知を押したとき(sw.js が開き直せなかったときだけ届きます)
+        if (d.type === 'openWeek') openWeek(d.week, d.chg, d.id);
+        // 開いているあいだに通知が届いたとき
+        if (d.type === 'noticeSaved') refreshNotice();
       });
     }
-    // 端末の設定で通知を許可して戻ってきたときに、案内を出し直します
+    // 前に出たとき:端末の設定で通知を許可して戻ってきたときの案内と、「変更のお知らせ」を出し直します
     document.addEventListener('visibilitychange', function () {
-      if (!document.hidden && S.tab === 'me') render();
+      if (document.hidden) return;
+      if (S.tab === 'me') render();
+      refreshNotice();
     });
+    window.addEventListener('pageshow', function (e) { if (e.persisted) refreshNotice(); });
+    window.addEventListener('focus', function () { refreshNotice(); });
+    refreshNotice();
     watchNotify();
     // 許可ずみの端末は、開くたびにトークンを取り直して保存します(変わっていたり、無効として消されていても戻る)
     if (S.me && pushState() === 'on') saveToken().catch(function (e) { console.warn(e); });
@@ -484,6 +496,8 @@
         bt.className = w.coop ? 'coop' : '';
         bt.innerHTML = esc(w.name) + (w.shozoku ? '<span class="s">' + esc(w.shozoku) + '</span>' : '');
         bt.addEventListener('click', function () {
+          // 別の人に選び直したときは、前の人あての「変更のお知らせ」を片づけます
+          if (S.me && S.me !== w.name) dropAllNotices();
           S.me = w.name;
           try { localStorage.setItem(ME_KEY, w.name); } catch (e) { }
           S.picking = false;
@@ -989,34 +1003,105 @@
   }
 
   /* =================================================================
-     通知を押して開いたとき
-       ・変わった日の週の「じぶん」を出します
+     「変更のお知らせ」(通知で知らせた、自分の予定の変更)
        ・いちばん上に「変更のお知らせ」(何日の、どこからどこへ)。「閉じる」で消えます
        ・変わった日のカードは、枠の色を変えて「変更」の札を付けます
+       ・中身は、sw.js がこの端末に控えた届いた通知(Cache Storage の yotei-notice)と、
+         押して開いたときの URL・メッセージで受け取ったものを合わせたものです。
+         開いたとき・前に出たとき・通知が届いたときに控えを読み直すので、
+         押したときにアプリが閉じていても、裏で開いたままでも出ます(押さずに開いても出ます)
+       ・押したばかりの通知があれば、その週を開きます
      ================================================================= */
+  var NOTICE_CACHE = 'yotei-notice';                        // sw.js と同じ名前
+  var NOTICE_URL = new URL('notice.json', location.href).href;
+  var JUMP_MS = 2 * 60 * 1000;    // 押してからこの時間のうちに前に出たら、その通知の週を開きます
+  var jumped = {};                // 週を開いた通知の id(同じ通知で何度も移らないように)
 
-  /** yotei.html?week=2026-10-12&chg=… を読みます。読んだら URL からは消します(読み込み直しで戻らないように) */
+  /** yotei.html?week=2026-10-12&chg=…&nid=… を読みます。読んだら URL からは消します(読み込み直しで戻らないように) */
   function noticeFromUrl() {
-    var out = { week: null, notice: [] };
+    var out = { week: null, extra: null };
     var q;
     try { q = new URLSearchParams(location.search); } catch (e) { return out; }
-    var wk = q.get('week'), chg = q.get('chg');
+    var wk = q.get('week'), chg = q.get('chg'), nid = q.get('nid');
     if (!wk && !chg) return out;
     if (/^\d{4}-\d{2}-\d{2}$/.test(wk || '')) out.week = YY.toKey(YY.mondayOf(wk));
-    out.notice = parseNotice(chg);
+    if (YY.noticeTriples(chg).length) out.extra = { id: nid || ('u:' + chg), chg: chg };
     try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) { }
     return out;
   }
 
-  /** 変更の中身 [[日付, 前の行き先, 今の行き先], …] を読みます(functions/lib.js の changePayload)。形がおかしいものは捨てます */
-  function parseNotice(s) {
-    var a;
-    try { a = JSON.parse(s || '[]'); } catch (e) { return []; }
-    if (!Array.isArray(a)) return [];
-    return a.filter(function (x) {
-      return Array.isArray(x) && /^\d{4}-\d{2}-\d{2}$/.test(x[0]) &&
-        typeof x[1] === 'string' && typeof x[2] === 'string';
-    }).slice(0, 20).map(function (x) { return { date: x[0], from: x[1], to: x[2] }; });
+  /** sw.js が控えた、届いた通知を読みます */
+  function readNotices() {
+    if (!('caches' in window)) return Promise.resolve([]);
+    return caches.open(NOTICE_CACHE)
+      .then(function (c) { return c.match(NOTICE_URL); })
+      .then(function (r) { return r ? r.json() : []; })
+      .then(function (a) { return Array.isArray(a) ? a : []; })
+      .catch(function () { return []; });
+  }
+  /** 控えから消します。ids を渡さなければ全部 */
+  function forgetNotices(ids) {
+    if (!('caches' in window)) return Promise.resolve();
+    return caches.open(NOTICE_CACHE).then(function (c) {
+      if (!ids) return c.delete(NOTICE_URL);
+      return c.match(NOTICE_URL)
+        .then(function (r) { return r ? r.json() : []; })
+        .then(function (a) {
+          var rest = (Array.isArray(a) ? a : []).filter(function (n) { return n && ids.indexOf(n.id) < 0; });
+          if (!rest.length) return c.delete(NOTICE_URL);
+          return c.put(NOTICE_URL, new Response(JSON.stringify(rest), { headers: { 'content-type': 'application/json' } }));
+        });
+    }).catch(function () { });
+  }
+
+  /** 控えと受け取ったものを合わせて、出す中身を決めます。中身が変わったら true */
+  function computeNotice() {
+    var seen = {};
+    var all = S.noticeStored.filter(function (n) { return n && n.id && n.chg; });
+    all.forEach(function (n) { seen[n.id] = true; });
+    all = all.concat(S.noticeExtra.filter(function (n) { return !seen[n.id]; }));
+    S.noticeIds = all.map(function (n) { return n.id; });
+    var next = YY.mergeNotices(all.map(function (n) { return n.chg; }), YY.todayKey());
+    var changed = JSON.stringify(next) !== JSON.stringify(S.notice);
+    S.notice = next;
+    return changed;
+  }
+  /** computeNotice して、中身が変わったとき(か force)だけ描き直します */
+  function applyNotice(force) {
+    if (computeNotice() || force) render();
+  }
+
+  /** 控えを読み直します(開いたとき・前に出たとき・通知が届いたとき)。押したばかりの通知があれば、その週を開きます */
+  function refreshNotice() {
+    return readNotices().then(function (list) {
+      S.noticeStored = list;
+      var now = Date.now();
+      var hit = list.filter(function (n) {
+        return n && n.clickedAt && now - n.clickedAt < JUMP_MS && !jumped[n.id];
+      }).sort(function (a, b) { return a.clickedAt - b.clickedAt; }).pop();
+      if (hit) { jumped[hit.id] = true; moveToWeek(hit.week); }
+      applyNotice(!!hit);
+    });
+  }
+
+  /** 「閉じる」:出していた通知を、この画面と控えの両方から消します */
+  function closeNotice() {
+    var ids = S.noticeIds.slice();
+    forgetNotices(ids);
+    S.noticeStored = S.noticeStored.filter(function (n) { return n && ids.indexOf(n.id) < 0; });
+    S.noticeExtra = [];
+    S.noticeIds = [];
+    S.notice = [];
+    render();
+  }
+
+  /** 別の人に選び直したとき:前の人あての通知を全部片づけます */
+  function dropAllNotices() {
+    forgetNotices(null);
+    S.noticeStored = [];
+    S.noticeExtra = [];
+    S.noticeIds = [];
+    S.notice = [];
   }
 
   /** 行き先 '工事id|REST' → '○○工事・休み'。空なら '未定'(通知の文面と同じ見せ方。工事名はいまの一覧から出します) */
@@ -1035,7 +1120,7 @@
     var x = document.createElement('button');
     x.className = 'nx';
     x.textContent = '閉じる';
-    x.addEventListener('click', function () { S.notice = []; render(); });
+    x.addEventListener('click', closeNotice);
     head.appendChild(x);
     box.appendChild(head);
     S.notice.forEach(function (n) {
@@ -1066,20 +1151,29 @@
     if (c && c.scrollIntoView) c.scrollIntoView({ block: 'center' });
   }
 
-  /** すでに開いていた画面で通知を押したとき:その週の「じぶん」と「変更のお知らせ」を出します */
-  function openWeek(week, chg) {
+  /** すでに開いていた画面で通知を押したとき(sw.js からのメッセージ):その週の「じぶん」と「変更のお知らせ」を出します */
+  function openWeek(week, chg, id) {
+    var key = id || ('m:' + chg);
+    if (YY.noticeTriples(chg).length && !S.noticeExtra.some(function (n) { return n.id === key; })) {
+      S.noticeExtra.push({ id: key, chg: chg });
+    }
+    jumped[key] = true;
+    moveToWeek(week);
+    applyNotice(true);
+    refreshNotice();
+  }
+
+  /** 「じぶん」のその週へ移ります(描き直しは呼ぶ側で) */
+  function moveToWeek(week) {
     S.tab = 'me';
     S.picking = false;
     Array.prototype.forEach.call(document.querySelectorAll('.tabs button'), function (x) {
       x.classList.toggle('on', x.getAttribute('data-tab') === 'me');
     });
-    var n = parseNotice(chg);
-    if (n.length) S.notice = n;
     if (/^\d{4}-\d{2}-\d{2}$/.test(week || '')) S.monday = YY.toKey(YY.mondayOf(week));
     S.openMates = {};
     S.openCells = {};
     watchWeek();
-    render();
   }
 
   /* =================================================================
