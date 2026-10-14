@@ -102,6 +102,7 @@
     editCat: 1,          // その吹き出しで選んでいるカテゴリ
     editNewCat: null,    // 新規追加のとき、どのカテゴリの「＋」から開いたか
     gridKey: '',         // 表を最後に描いたときの「どの一覧か」。スクロール位置を戻す判定に使います
+    bodyKey: '',         // #body を最後に描いたときの「どのタブの何か」。チェック・配信・メンバーの位置を戻す判定に使います
     notifyOn: {},        // 通知を届ける人 { 名前: true }(メンバー → 🔔 通知)
     notifyTokens: {},    // 通知を許可した端末がある人 { 名前: true }
     notifyFails: {}      // 通知を許可できなかった最後の記録 { 名前: { code, kind, detail, at, n } }
@@ -378,6 +379,15 @@
     var gwPos = (gwOld && gwKey === S.gridKey)
       ? { top: gwOld.scrollTop, left: gwOld.scrollLeft } : null;
     S.gridKey = gwKey;
+    /* チェック・配信・メンバーのタブは、表ではなく #body そのものが動きます。
+       #body は入れ物ごと作り直さないので、ふだんはブラウザが位置を残してくれますが、
+       描く途中で大きさを測る処理が入ると先頭に戻ってしまうため、念のため同じように覚えて戻します。
+       同じタブの同じ中身(同じ週・日・名簿の見せ方)を描き直すときだけ戻します */
+    var bodyKey = S.tab + '|' + S.monday + '|' +
+      (S.tab === 'check' || S.tab === 'line' ? S.pickDate : '') + '|' +
+      (S.tab === 'members' ? memView + '|' + memBulk : '');
+    var bodyTop = (bodyKey === S.bodyKey) ? b.scrollTop : null;
+    S.bodyKey = bodyKey;
 
     b.innerHTML = '';
     b.className = (S.tab === 'plan') ? 'plan' : '';
@@ -394,6 +404,7 @@
       var gwNew = b.querySelector('.gridwrap');
       if (gwNew) { gwNew.scrollTop = gwPos.top; gwNew.scrollLeft = gwPos.left; }
     }
+    if (bodyTop) b.scrollTop = bodyTop;
 
     // 工事やメンバーの吹き出しを開いている最中に描き直しが入ったら、位置を合わせ直します
     if (S.editJob) {
@@ -3003,6 +3014,7 @@
     S.past = { rows: rows, checked: {} };
     rows.forEach(function (x) { if (show[x.job.id]) S.past.checked[x.job.id] = true; });
 
+    $('pastpop').innerHTML = '';   // 前に開いたときの一覧の位置を引き継がないように
     drawPastPop();
     $('pastmask').classList.add('on');
     $('pastpop').classList.add('on');
@@ -3046,7 +3058,10 @@
 
     h.push('<div class="pf"><button id="pcancel">やめる</button>' +
       '<button class="ok2" id="pok">決定</button></div>');
+    // 1行押すたびに描き直すので、一覧の位置を覚えて戻します(下のほうの工事を押しても先頭に戻らないように)
+    var keep = (pop.querySelector('.pb') || {}).scrollTop || 0;
     pop.innerHTML = h.join('');
+    if (keep) pop.querySelector('.pb').scrollTop = keep;
 
     Array.prototype.forEach.call(pop.querySelectorAll('.prow'), function (b) {
       b.addEventListener('click', function () {

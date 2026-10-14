@@ -287,6 +287,8 @@ td.jn:hover .n{text-decoration:underline}
     billed: {},     // その月の請求済み { 工事id: true }
     unwatchBilled: null,
     detail: null,   // いま開いている内訳
+    viewKey: '',    // 表を最後に描いたときの月。スクロール位置を戻す判定に使います
+    detailKey: '',  // 内訳を最後に描いたときの「どの工事の、どの範囲か」。内訳の位置を戻す判定に使います
     loading: false
   };
 
@@ -496,7 +498,21 @@ td.jn:hover .n{text-decoration:underline}
       : '<td class="tot2 wait">…</td>');
     h.push('</tr></tfoot></table></div>');
 
+    /* 表のスクロール位置。
+       請求済みの ✓ を押すと、Firebase から届いた中身で表を作り直すため、そのままでは先頭に戻ってしまいます。
+       ほかの端末の変更・総合計の読みこみ・「予定のない工事も出す」の切り替えでも描き直します。
+       同じ月を描き直すときは、見ていた場所(縦・横)に戻します。月を切り替えたときだけ先頭から見せます */
+    var key = S.y + '-' + S.m;
+    var old = $('body').querySelector('.wrap');
+    var keep = (old && key === S.viewKey) ? { top: old.scrollTop, left: old.scrollLeft } : null;
+    S.viewKey = key;
+
     $('body').innerHTML = h.join('');
+    if (keep) {
+      var wrap = $('body').querySelector('.wrap');
+      wrap.scrollTop = keep.top;
+      wrap.scrollLeft = keep.left;
+    }
 
     // 工事名をクリックすると内訳が出ます
     Array.prototype.forEach.call($('body').querySelectorAll('.txt[data-job]'), function (td) {
@@ -658,6 +674,13 @@ td.jn:hover .n{text-decoration:underline}
     }
     h.push('</div>');
 
+    /* 内訳の中の位置。全期間ぶんがあとから読めたときにも描き直すので、
+       同じ工事・同じ範囲(この月 / 全期間)なら見ていた場所に戻します。開いたときと範囲を変えたときは先頭から */
+    var key = D.jobId + '|' + D.scope;
+    var oldDb = $('detail').querySelector('.db');
+    var keepTop = (oldDb && key === S.detailKey) ? oldDb.scrollTop : 0;
+    S.detailKey = key;
+
     $('detail').innerHTML = h.join('');
     $('dclose').addEventListener('click', closeDetail);
     Array.prototype.forEach.call($('detail').querySelectorAll('.dscope button'), function (b) {
@@ -667,11 +690,12 @@ td.jn:hover .n{text-decoration:underline}
         drawDetail();
       });
     });
-    $('detail').querySelector('.db').scrollTop = 0;
+    $('detail').querySelector('.db').scrollTop = keepTop;
   }
 
   function closeDetail() {
     S.detail = null;
+    S.detailKey = '';      // 次に開いたときは、同じ工事でも先頭から
     $('detail').classList.remove('on');
     $('dmask').classList.remove('on');
   }
